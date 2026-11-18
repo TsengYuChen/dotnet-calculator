@@ -5,9 +5,16 @@
         "source": "github",
         "repo": "google/elephant-goldfish-model"
       }
+    },
+    "mattpocock": {
+      "source": {
+        "source": "github",
+        "repo": "mattpocock/skills"
+      }
     }
   },
   "enabledPlugins": {
-    "egm@egm": true
+    "egm@egm": true,
+    "mattpocock-skills@mattpocock": true
   }
 }
