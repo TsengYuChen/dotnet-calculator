@@ -1,5 +1,7 @@
 # 第 7 階段：批評審查報告（Critic Review，第 1 輪）
 
+> 這是第 7 階段**第 1 輪**的審查報告。第 2 輪見 [critic_report_r2.md](critic_report_r2.md)，作者的決定見 [goldfish_review_report.md](goldfish_review_report.md) 和 [goldfish_review_report_r2.md](goldfish_review_report_r2.md)。
+
 *   **審查對象：** `docs/designs/vehicle_management.md`，第 1–621 行（功能規格）
 *   **審查者：** egm-design（feature-spec-standard）、egm-structural（feature-spec-standard）、egm-style（無另附標準）——三位都已完成
 *   **Goldfish 背景資料：** 無

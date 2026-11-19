@@ -1,5 +1,9 @@
 # Goldfish Annotated Review Report（第 7 階段第 2 輪）
 
+**Status:** resolved（2026-11-19）
+
+**作者決定（逐項確認）：** 8 個 Major 全部接受（D-M1 選 (a)：補上 L − 6 個月的推算期間，新增 CUJ 4c）；Nit N-1–N-22、N-24 全部接受（N-15 選 (a)：全部改成「下次檢驗期間」）；N-23 同意 DECLINE。已套用到設計文件。
+
 **Target:** `docs/designs/vehicle_management.md`（第 1–711 行，功能規格）
 **來源：** `critic_report_r2.md`（第 7 階段第 2 輪，egm-design、egm-structural、egm-style）
 
