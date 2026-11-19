@@ -91,7 +91,7 @@
 *   **C3（已決定）日期輸入：** 年、月、日三個下拉選單，不用文字輸入。年份選單依使用者設定顯示民國或西元（例如「114」或「2025」），範圍從今年往前 50 年，不能選未來；日的選項隨年、月變動（2 月依閏年顯示 28 或 29 天）；送出前組成西元 `YYYY-MM-DD`。不需要解析文字，也就沒有「民國模式打成西元年」的問題。Vitest 測試涵蓋民國／西元換算和每月天數。
 *   **C4（已決定）** 狀態文字只陳述期間，不做判斷（例如「目前為可驗車期間（已驗車可忽略）」）。
 *   **C5（已決定）同時編輯檢查：** 第一版要做（作者決定）。用 PostgreSQL 的 `xmin` 當版本號：讀取車輛時 API 回傳 `version`；修改（PUT）時前端必須帶回 `version`，不一致就回傳 409，錯誤代碼 `VEHICLE_MODIFIED`，畫面提示「資料已被修改，請重新整理」；沒帶 `version` 回傳 400。丟進垃圾桶、還原、永久刪除不檢查版本，由車輛目前的狀態（在不在垃圾桶）決定能不能執行。整合測試要涵蓋版本不一致的情況。
-*   **C6** 部署腳本 `deploy.sh`：`git pull` → `pg_dump` → `docker compose up -d --build`。
+*   **C6（已決定）** 部署腳本 `deploy.sh`：`git pull` → `pg_dump` → `docker compose up -d --build`。
 *   **C7** Caddy 只在 VPS 啟用（Compose profile）。
 
 ## Critical User Journeys (CUJs)
