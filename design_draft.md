@@ -753,6 +753,23 @@ Calculate(vehicle, today):
 
 `data_protection_keys`：框架定義的欄位，放在獨立的 DbContext 和 migration。
 
+#### 1.7 命名慣例
+
+| 種類 | 風格 | 例子 |
+| --- | --- | --- |
+| query 參數 | camelCase | `returnUrl`、`sort` |
+| query 參數的值 | camelCase | `sort=deadline`、`sort=manufactureDate` |
+| JSON 欄位（請求、回應、ProblemDetails 擴充欄位） | camelCase | `licenceInspectionDate`、`trashedVehicleId`、`earliestDate` |
+| URL 路徑 | 全小寫，單字之間用連字號（kebab-case） | `/api/reference/displacement-brackets`、`/api/me/preferences` |
+| 代碼值（車種、級距、檢驗種類、狀態、日期來源、曆法、錯誤代碼） | 全大寫，單字之間用底線 | `HEAVY_MC`、`MC_51_250`、`IN_WINDOW`、`PLATE_EXISTS_IN_TRASH`、`ROC` |
+| 規則 ID | 全大寫，用連字號分段 | `RTS44-CAR-AGE5TO10` |
+| 資料表、欄位、索引、constraint | 全小寫，單字之間用底線（snake_case）；索引和 constraint 用 `pk_`、`fk_`、`ux_`、`ix_`、`ck_` 前綴 | `licence_inspection_date`、`ux_vehicles_owner_plate` |
+| C# 型別、方法、屬性 | PascalCase | `InspectionCalculator`、`LicenceInspectionDate` |
+| 環境變數 | 全大寫，單字之間用底線 | `ALLOWED_EMAILS`、`MASTER_KEY` |
+| 前端檔案 | Vue 元件 PascalCase；其他 TypeScript 檔案 camelCase | `VehicleListPage.vue`、`useCurrentUser.ts`、`calendar.ts` |
+
+新增端點、欄位或代碼時照這張表命名。ASP.NET Core 預設把 JSON 序列化成 camelCase；EF Core 的欄位名稱要明確對應成 snake_case（例如用命名慣例套件或在設定檔裡指定）。
+
 ### 2. 檔案清單
 
 #### 2.1 Repo 根目錄
