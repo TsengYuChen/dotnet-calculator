@@ -214,6 +214,7 @@
 - **規則存資料庫（seed + migration），或程式內一份規則表再產生 seed** — 作者否決：沒有管理頁時，存資料庫只是多一份要同步的資料。第一版規則只寫在程式裡。
 - **把日曆日期也存成 UTC 時間點** — 否決：日曆日期沒有時區，轉成 UTC 會讓台北時間 00:00–08:00 的日期往前跑一天。日曆日期存 `date`，只有時間點存 UTC。
 - **每個日期欄位旁放民國／西元切換，顯示跟著當初輸入的曆法** — 作者否決：每個日期都要多存一個曆法欄位，算出來的日期還要另外決定跟著哪個欄位，而且列表會民國、西元混在一起。改回個人設定、全站套用。
+- **用 GitHub Actions 依分支自動部署（本機用 self-hosted runner、VPS 用 SSH）** — 作者延後：repo 是公開的，self-hosted runner 可能讓 fork PR 在作者電腦上執行程式。第一版改成手動 `git pull` + `docker compose up -d`，自動部署之後再加。
 - **到期前 2 週變色** — 作者否決：改成進入可驗車的期間時變色，比較符合實際用途。
 - **JWT 存在 localStorage、SPA 自己處理 PKCE** — 審查者建議否決：token 會暴露在 XSS 風險下。採用 BFF cookie。
 - **ASP.NET Identity、Keycloak、Auth0、Duende BFF** — 審查者建議否決：只用 Google 登入、沒有角色的情況下太重。
@@ -242,12 +243,11 @@
 
 1. **排氣量級距**（作者已決定：自用小客車和燃油機車都必填，下拉選單照**牌照稅分級**）。後果：級距不一定對得上大型重型機車的門檻，所以第一版排除大型重機時，要在選單裡只列出明確低於門檻的級距；跨門檻的那一級要核對條文後決定是否列出。級距清單寫在程式裡，和驗車規則一樣附上法規出處。
    - 電動汽車（作者決定）：汽車的排氣量選單加一個「電動」選項。資料上存成固定的級距代碼（例如 `ELECTRIC`），不要存成 0cc 或空值。注意這和機車的做法不一致：電動機車是獨立的車種，電動汽車則是排氣量選項。汽車驗車規則只看車齡，所以第一版不受影響；但第二版做稅金時（電動車牌照稅另有規定），程式要靠這個代碼判斷。
-2. **部署細節**（作者已決定：程式放 GitHub，用 CI/CD 依分支部署；`main` 分支部署到作者的本機電腦，`prod` 分支部署到 VPS）。待確認：
-   - VPS 有沒有自己的網域？Google OAuth 除了 `localhost` 以外，redirect URI 必須是 HTTPS 加上公開網域，不能用 IP。
-   - 本機電腦怎麼接收部署：GitHub Actions 的雲端 runner 連不進家裡的電腦，通常要在本機裝 self-hosted runner。如果 repo 是公開的，別人發的 PR 可能在你的電腦上執行程式，self-hosted runner 只能用在私有 repo，或要限制只有 push 到 `main` 才觸發。
-   - VPS 怎麼接收部署：GitHub Actions 建置映像檔推到 GHCR，再用 SSH 讓 VPS 拉新映像檔並重啟（SSH 金鑰放在 GitHub Secrets）。
-   - `.env` 放哪裡：直接放在各台主機上（GitHub 完全不知道名單），或放在 GitHub Environments 的 secrets，部署時寫出 `.env`。兩種都不會進 git。
-   - `prod` 分支要設保護規則：只能從 `main` 合併進來，不能直接 push。
-   - 本機和 VPS 是兩個環境，要在同一個 Google OAuth client 註冊兩個 redirect URI，或各自建立一個 client。
+2. **部署方式**（作者已決定）：第一版**不做自動部署**（不用 GitHub Actions 部署）。本機（`main`）和 VPS（`prod`）都是手動 `git pull` 後執行 `docker compose up -d`。所以：
+   - `docker compose up -d` 必須一次完成所有事：migration 由 Compose 裡的一次性服務先執行，API 等它成功後才啟動（`depends_on: condition: service_completed_successfully`）。
+   - 每台主機各自有不進 git 的 `.env`。
+   - VPS 仍需要網域和 HTTPS（Google OAuth 除了 `localhost` 以外都要求 HTTPS 加公開網域），可以在 Compose 裡加一個 Caddy 自動申請憑證。本機用 `http://localhost`。兩個 redirect URI 都要註冊到 Google OAuth client。
+   - `prod` 分支設保護規則：只能從 `main` 合併，不能直接 push。
+   - 之後加自動部署時的安全規則（已討論，留給後續版本）：公開 repo 不使用 self-hosted runner，或只用 `push` 觸發；不使用 `pull_request_target`；VPS 的 SSH 金鑰放在只限 `prod` 分支的 GitHub Environment；或改成主機自己定期從 GHCR 拉新映像檔。
 
 **法規核對（寫測試前必做）：** 道路交通安全規則第 44 條（汽車定期檢驗）的現行條文和修正日期；環境部機車排氣定期檢驗的相關規定；大型重型機車的排氣量門檻。測試案例名稱要附上條號和修正日期。
