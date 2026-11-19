@@ -45,7 +45,7 @@
     *   車種：自用小客車、一般燃油機車、大型重型機車、電動機車。
     *   欄位：車牌、廠牌、型號、暱稱（選填）、顏色（選填）、車種、排氣量級距（電動機車以外必填）、出廠日期、原發照日期、行照指定檢驗日期（選填，只限汽車和大型重機）。
     *   兩個人同時修改同一台車時，後存的一方會被擋下，並提示「資料已被修改，請重新整理」。
-*   **G3 垃圾桶：** 刪除時先丟進垃圾桶，可以還原或永久刪除，不自動清空。車牌在同一使用者底下唯一（含垃圾桶），重複時提示去垃圾桶還原。
+*   **G3 垃圾桶：** 刪除時先丟進垃圾桶，可以還原或永久刪除；丟進垃圾桶滿 30 天的車自動永久刪除（不需要背景排程，見技術計畫）。車牌在同一使用者底下唯一（含垃圾桶），重複時提示去垃圾桶還原。
 *   **G4 驗車期間計算：** 驗車規則寫在程式裡，在讀取時算出每台車每種適用檢驗的下一個期間（期間起日、最後期限、狀態、規則 ID、日期來源、是否為推算），不存進資料庫。有填行照指定檢驗日期時，定期檢驗以它為準。
 *   **G5 顯示：** 列表可依出廠日或最後期限排序。進入檢驗期間時日期變色。每個狀態都有文字標籤，不只靠顏色。列表上方和車輛詳細頁各顯示一次免責聲明。
 *   **G6 日期：** 日期的輸入和顯示可用民國年或西元年，由使用者在個人設定選一次，預設民國；輸入用年、月、日三個下拉選單。時間點以 UTC 存放；日曆日期不轉時區；「今天」用台北時間。
@@ -61,7 +61,7 @@
 
 *   Email、LINE、推播通知，以及任何應用程式內的背景排程。
 *   管理頁面、角色與權限、在畫面上編輯規則；規則不存資料庫。
-*   帳號刪除、垃圾桶自動清空。有人要求刪除資料時，由作者人工處理。
+*   帳號刪除。有人要求刪除資料時，由作者人工處理。
 *   「已逾期」狀態、登記已驗車、驗車紀錄、「即將進入檢驗期間」的提前提示。
 *   手動覆寫驗車日期。例外：汽車和大型重機可以選填行照上的指定檢驗日期。
 *   期限遇假日的順延計算。
@@ -218,6 +218,7 @@
 
 **VehicleGo.Infrastructure（參考 Application、Domain）**
 - **資料庫：** EF Core + Npgsql 的 `AppDbContext`，兩個具名查詢過濾器（擁有者、已刪除）；`xmin` 當作同時編輯檢查的版本號；`(owner_id, normalized_plate)` 唯一索引；唯一索引衝突轉成 `PLATE_EXISTS_ACTIVE` 或 `PLATE_EXISTS_IN_TRASH`。
+- **垃圾桶自動清空（作者決定，審查第 5 階段 M3）：** 新增車輛和登入（建立或更新使用者）時，先永久刪除目前使用者 `deleted_at` 早於「現在 − 30 天」的車。「現在」由 `TimeProvider` 傳入，不用 SQL 的 `now()`，測試才能控制時間。讀取（垃圾桶列表、單台車、還原、永久刪除）時，已滿 30 天的車視為不存在，所以就算還沒被實際刪除，使用者也看不到或操作不到。GET 不做刪除，避免讀取有副作用。
 - **Repository 與查詢服務：** 實作 Application 的四個介面。垃圾桶相關查詢和車輛數量只關閉「已刪除」過濾器，不能關閉擁有者過濾器。
 - **加密：** 從 `MASTER_KEY` 用 HKDF 推導三把金鑰；共用的 AES-GCM 工具；`IEmailProtector` 的實作。
 - **Data Protection：** 獨立的小 DbContext 存放登入金鑰，加上自行實作的 XML 加密器和解密器。
@@ -256,6 +257,7 @@ SPA ── GET /api/vehicles?sort=deadline ──► VehiclesController
 SPA ── POST /api/vehicles（帶 X-XSRF-TOKEN）──► 登入檢查 → CSRF 檢查 → VehiclesController
   → CreateVehicleCommandHandler
       → Domain 驗證（日期、級距與車種、行照日期）── 失敗 → 400 + 錯誤代碼
+      → IVehicleRepository：先永久刪除自己滿 30 天的垃圾桶車輛
       → IVehicleRepository：計算車輛數（含垃圾桶）≥ 50 → 409 VEHICLE_LIMIT_REACHED
       → 建立 Vehicle（正規化車牌）、儲存
           ── 唯一索引衝突 → 409 PLATE_EXISTS_ACTIVE / PLATE_EXISTS_IN_TRASH
@@ -466,10 +468,10 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 *   **缺點**：使用者沒有反悔的機會。
 *   **否決原因**：作者否決：採用垃圾桶。
 
-#### D2：垃圾桶 30 天後自動清空
-*   **優點**：個資不會一直留著。
-*   **缺點**：需要背景排程。
-*   **否決原因**：作者否決。
+#### D2：垃圾桶不自動清空
+*   **優點**：不需要任何清除邏輯。
+*   **缺點**：丟進垃圾桶的個資（車牌）永遠留著；垃圾桶算在 50 台上限內，使用者必須手動永久刪除才能新增。
+*   **否決原因**：作者否決（審查第 5 階段 M3 後改變決定）：改成 30 天後自動清空。原本以為自動清空需要背景排程，審查者指出可以在寫入路徑和登入時順便清除，不需要排程。
 
 #### D3：車牌唯一性不檢查垃圾桶（部分唯一索引）
 *   **優點**：可以用同一個車牌重新新增。
@@ -696,7 +698,7 @@ Calculate(vehicle, today):
 
 *   `VehicleInput`：`plate`、`brand`、`model`、`nickname?`、`color?`、`vehicleType`、`displacementBracket?`、`manufactureDate`、`originalIssueDate`、`licenceInspectionDate?`。
 *   `VehicleDto`：`id`、`version`、`VehicleInput` 的所有欄位、`inspections: [{ kind, status, earliestDate?, deadline?, ruleId, estimated, basis }]`。
-*   `TrashItemDto`：`id`、`plate`、`brand`、`model`、`nickname?`、`vehicleType`、`deletedAt`。
+*   `TrashItemDto`：`id`、`plate`、`brand`、`model`、`nickname?`、`vehicleType`、`deletedAt`、`purgeAt`（`deletedAt` + 30 天，畫面顯示「將於 X 永久刪除」）。
 
 #### 1.5 錯誤代碼
 
@@ -747,7 +749,7 @@ Calculate(vehicle, today):
 | `displacement_bracket` | `text` | 可 null；check：只有 `ELECTRIC_MC` 為 null，且代碼屬於該車種（`ck_vehicles_bracket`） |
 | `manufacture_date`、`original_issue_date` | `date` | NOT NULL；check `original_issue_date >= manufacture_date`（`ck_vehicles_dates`） |
 | `licence_inspection_date` | `date` | 可 null；check：只有 `CAR`、`HEAVY_MC` 可以有值（`ck_vehicles_licence_date`） |
-| `deleted_at` | `timestamptz` | 可 null |
+| `deleted_at` | `timestamptz` | 可 null；`(owner_id, deleted_at)` 索引（`ix_vehicles_owner_deleted`），供 30 天清除使用 |
 | `created_at`、`updated_at` | `timestamptz` | NOT NULL |
 | `xmin` | 系統欄位 | 對應 `uint Version`，同時編輯檢查 |
 
@@ -822,7 +824,7 @@ Calculate(vehicle, today):
 | --- | --- |
 | `VehicleGo.Application.csproj` | 只參考 Domain |
 | `Abstractions/ICommandHandler.cs`、`IQueryHandler.cs` | handler 介面（C3） |
-| `Abstractions/IVehicleRepository.cs` | `GetForOwnerAsync(id, includeTrashed)`、`CountForOwnerIncludingTrashAsync`、`AddAsync`、`SaveAsync(vehicle, expectedVersion?)`、`DeleteAsync` |
+| `Abstractions/IVehicleRepository.cs` | `GetForOwnerAsync(id, includeTrashed)`、`CountForOwnerIncludingTrashAsync`、`PurgeExpiredTrashAsync(ownerId, cutoff)`、`AddAsync`、`SaveAsync(vehicle, expectedVersion?)`、`DeleteAsync` |
 | `Abstractions/IUserRepository.cs` | `UpsertOnLoginAsync(sub, emailEncrypted, emailHash)`、`GetAsync`、`SaveAsync` |
 | `Abstractions/IVehicleQueries.cs` | 列出使用中的車、取單台、列出垃圾桶（都只限目前使用者） |
 | `Abstractions/IUserQueries.cs` | 取得曆法偏好 |
@@ -831,7 +833,7 @@ Calculate(vehicle, today):
 | `Abstractions/IAllowlistProvider.cs` | 取得名單 |
 | `Common/TaipeiToday.cs` | 由 `TimeProvider` 取得台北時間的今天 |
 | `Auth/LoginAdmission.cs` | 名單比對 + `email_verified` |
-| `Auth/EnsureUserCommand.cs`（含 handler） | 登入時建立或更新使用者 |
+| `Auth/EnsureUserCommand.cs`（含 handler） | 登入時建立或更新使用者，並清除該使用者滿 30 天的垃圾桶車輛 |
 | `Vehicles/CreateVehicleCommand.cs`、`UpdateVehicleCommand.cs`、`TrashVehicleCommand.cs`、`RestoreVehicleCommand.cs`、`PurgeVehicleCommand.cs`（各含 handler） | 寫入使用案例；新增和修改依規則引擎診斷寫 `LICENCE_DATE_MISMATCH`、`UNCOMPUTABLE` log |
 | `Vehicles/ListVehiclesQuery.cs`、`GetVehicleQuery.cs`、`ListTrashQuery.cs`（各含 handler） | 讀取使用案例；呼叫規則引擎；排序 |
 | `Vehicles/VehicleDto.cs`、`InspectionDto.cs`、`TrashItemDto.cs` | 回應資料 |
@@ -905,7 +907,7 @@ Calculate(vehicle, today):
 | `Infrastructure/TestClient.cs` | 透過測試登入端點取得**真正的** cookie，自動帶 XSRF token。所有整合測試都走真正的 cookie 驗證和每次請求的名單檢查，不使用假的登入處理器（作者決定，取代 brief 第 8 節「一般測試用假的登入處理器」的寫法） |
 | `AuthTests.cs` | `/api` 未登入回 401（不轉址）；移出名單後下一個請求 401；`returnUrl` 拒絕外部網址；登出要 CSRF；同時第一次登入只建立一筆；測試登入端點在非 `IntegrationTest` 環境不存在 |
 | `CsrfTests.cs` | 沒帶 header 回 `CSRF_INVALID`；未登入時先回 401 |
-| `VehicleTests.cs` | 1.5 節每個錯誤代碼至少一個測試；車牌重複（使用中、垃圾桶）；垃圾桶流程 |
+| `VehicleTests.cs` | 1.5 節每個錯誤代碼至少一個測試；車牌重複（使用中、垃圾桶）；垃圾桶流程；滿 30 天的垃圾桶車輛在新增或登入時被刪除、讀取時看不到（用 `FakeTimeProvider` 控制時間） |
 | `ConcurrencyTests.cs` | 舊版本回 `VEHICLE_MODIFIED`；沒帶版本回 `VERSION_REQUIRED` |
 | `VehicleLimitTests.cs` | 第 51 台被擋下並附數量 |
 | `IsolationTests.cs` | 使用者 A 對 B 的每個車輛和垃圾桶端點都回 404；`/api/me` 只讀寫自己 |
