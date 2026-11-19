@@ -885,7 +885,7 @@ Calculate(vehicle, today):
 | `VehicleGo.IntegrationTests.csproj` | 參考 Web；xUnit、Testcontainers.PostgreSql、`Microsoft.AspNetCore.Mvc.Testing` |
 | `Infrastructure/PostgresFixture.cs` | 讀 `postgres-image.txt` 啟動 PostgreSQL，套用兩個 DbContext 的 migration |
 | `Infrastructure/VehicleGoFactory.cs` | `IntegrationTest` 環境；記憶體中產生的 `MASTER_KEY`；可替換的名單；`FakeTimeProvider` |
-| `Infrastructure/TestClient.cs` | 透過測試登入端點取得 cookie，自動帶 XSRF token |
+| `Infrastructure/TestClient.cs` | 透過測試登入端點取得**真正的** cookie，自動帶 XSRF token。所有整合測試都走真正的 cookie 驗證和每次請求的名單檢查，不使用假的登入處理器（作者決定，取代 brief 第 8 節「一般測試用假的登入處理器」的寫法） |
 | `AuthTests.cs` | `/api` 未登入回 401（不轉址）；移出名單後下一個請求 401；`returnUrl` 拒絕外部網址；登出要 CSRF；同時第一次登入只建立一筆；測試登入端點在非 `IntegrationTest` 環境不存在 |
 | `CsrfTests.cs` | 沒帶 header 回 `CSRF_INVALID`；未登入時先回 401 |
 | `VehicleTests.cs` | 1.5 節每個錯誤代碼至少一個測試；車牌重複（使用中、垃圾桶）；垃圾桶流程 |

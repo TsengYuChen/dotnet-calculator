@@ -121,12 +121,12 @@
 - 只申請 `openid email` 權限，不申請 `profile`，因為用不到姓名。
 - 使用者表：內部 ID 當主鍵，`google_sub` 唯一。第一次登入時建立使用者，要能承受兩個請求同時第一次登入。
 - **登入名單（作者決定）：** Email 清單放在環境變數 `ALLOWED_EMAILS`（逗號分隔、去頭尾空白、不分大小寫）。後端要求 `email_verified = true`，名單外的帳號顯示「此帳號尚未開放使用」，也不建立使用者。變數沒設或是空的，就**全部拒絕**，服務啟動時印出警告。
-- **名單檢查要放在獨立的服務裡**（例如 `LoginAdmission.Evaluate(claims, allowlist)`），由 OIDC 事件呼叫，並直接寫單元測試。原因（3 位審查者）：整合測試用假的登入處理器，會跳過 OIDC 事件；如果檢查寫在事件裡，名單測試等於沒測到真正的程式。另外加一個測試，確認 OIDC 事件確實有接到這個服務。
+- **名單檢查要放在獨立的服務裡**（例如 `LoginAdmission.Evaluate(claims, allowlist)`），由 OIDC 事件呼叫，並直接寫單元測試。原因（3 位審查者）：整合測試不會連到 Google，會跳過 OIDC 事件；如果檢查寫在事件裡，名單測試等於沒測到真正的程式。另外加一個測試，確認 OIDC 事件確實有接到這個服務。
 - **問題：把人從名單移除後，他仍然能登入。** 名單只在登入時檢查，而 Data Protection 金鑰已經持久化，舊的登入 cookie 在重新啟動後仍然有效，預設最長可以用 14 天。
 - **作者決定：每次請求都重新檢查名單。** 在 `CookieAuthenticationEvents.OnValidatePrincipal` 裡呼叫同一個 `LoginAdmission` 服務，不在名單上就呼叫 `RejectPrincipal()` 並清除 cookie，下一個請求就會被登出。
   - **比對的 Email 來自 cookie 裡的 claim**（登入時寫入），不查資料庫，所以每次請求只是一次記憶體比對。名單透過可替換的服務讀取，測試時可以改變。**注意：** 環境變數只在容器啟動時讀取，改了 `.env` 之後要執行 `docker compose up -d api` 重建容器才會生效（`docker compose restart` 不會重讀 `.env`）。
   - **使用者資料表存 Email，加密存放（作者決定）。** 存登入時驗證過的 Email，正規化為去頭尾空白、轉小寫，每次登入時更新。欄位：`email_encrypted bytea`（格式：1 byte 金鑰版本 + 12 bytes 隨機 nonce + 16 bytes tag + 密文，AES-GCM，associated data 為用途字串 `email:v1`）、`email_lookup_hash bytea`（`HMAC-SHA256(Email 查詢金鑰, 正規化 Email)`，一般索引，不設唯一）。只用來在有人要求刪除資料時查詢，不拿來識別使用者（識別仍然用 `google_sub`），也不拿來比對名單。log 裡寫 `email_lookup_hash` 的前 8 碼（有金鑰的 HMAC，不是單純的 SHA-256，避免用名單反查）。
-  - **測試要經過真正的 cookie 機制：** 假的登入處理器會跳過 cookie 事件，測試會在沒執行真正程式的情況下通過。這個測試改用真正的 cookie scheme：在「整合測試」限定的登入端點發 cookie（只在 `ASPNETCORE_ENVIRONMENT=IntegrationTest` 時註冊；本機 Docker 部署用 `Production`，所以這個端點不存在；另一個測試確認所有非 `IntegrationTest` 的環境都沒有它），接著從名單移除該 Email，確認下一個請求回傳 401。
+  - **測試要經過真正的 cookie 機制（撰寫設計文件時，作者決定所有整合測試都走真正的 cookie，不使用假的登入處理器）：** 假的登入處理器會跳過 cookie 事件，測試會在沒執行真正程式的情況下通過。測試改用真正的 cookie scheme：在「整合測試」限定的登入端點發 cookie（只在 `ASPNETCORE_ENVIRONMENT=IntegrationTest` 時註冊；本機 Docker 部署用 `Production`，所以這個端點不存在；另一個測試確認所有非 `IntegrationTest` 的環境都沒有它），接著從名單移除該 Email，確認下一個請求回傳 401。
   - **被移除的使用者看到什麼：** SPA 收到 401 時導向登入頁；Google 登入後被名單擋下時，顯示「此帳號尚未開放使用」頁，不自動重新開始 Google 登入，避免無限循環。
 - **Data Protection 金鑰（作者決定）：** 存在 PostgreSQL，並用從主金鑰推導出的 Data Protection 金鑰以 AES-GCM 加密（自行實作 `IXmlEncryptor` / `IXmlDecryptor`，associated data 為 `dpkey:v1`）。資料庫備份單獨拿到也解不開；還原時需要同一份 `.env`。實作細節見第 15 節。
 - `/api` 未登入時回傳 401，不轉址（OIDC 預設會轉址到 Google，需要特別處理，見第 15 節）。Cookie 設定 `HttpOnly`、`Secure`（`CookieSecurePolicy.Always`）、`SameSite=Lax`。本機用 `http://localhost` 時，只保證 Chrome 和 Firefox 能登入（它們把 localhost 視為安全來源），網址固定為 `http://localhost:<固定 port>`，不要用 `127.0.0.1` 或區網 IP。
