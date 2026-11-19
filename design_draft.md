@@ -94,7 +94,8 @@
 *   **C1（作者已決定，2026-11-19）** 後端分成四個專案：Domain、Application、Infrastructure、Web，依賴方向由專案參考強制（每層放什麼在技術計畫寫明）。Clean Architecture 本身只規定「依賴由外往內」，沒有規定要拆專案；拆成四個專案是為了讓編譯器強制這條規則。
 *   **C2（作者已決定，2026-11-19）** 寫入用 Repository、讀取用查詢服務：新增、修改、丟進垃圾桶、還原、永久刪除透過 Application 定義的 Repository 介面（車輛、使用者），讀取（車輛列表、單台車、垃圾桶列表、`/api/me`）透過 Application 定義的查詢介面直接回傳畫面需要的資料；兩者都由 Infrastructure 用 EF Core 實作。Application 專案不參考 EF Core。
 *   **C3（作者已決定，2026-11-19）** 使用案例用自己定義的 handler 介面組織：Application 定義 `ICommandHandler<TCommand>`、`IQueryHandler<TQuery, TResult>`，每個使用案例一個實作類別，用 ASP.NET Core 內建 DI 註冊，API 端點注入對應的 handler。不使用 MediatR 等外部套件；需要共同處理時用 decorator 實作。
-*   **C4（詳細實作計畫）** 測試專案怎麼切分、方案和資料夾怎麼命名。
+*   **C4（作者已決定，2026-11-19）測試專案：** 兩個。`UnitTests` 放不需要資料庫的測試（Domain 規則引擎、Application handler、Infrastructure 的加密與車牌正規化）和架構測試；`IntegrationTests` 放 API + PostgreSQL（Testcontainers）的整合測試和資料隔離測試。已知取捨：架構測試沒辦法在 CI 上設成獨立的必要檢查。
+*   **C5 命名（機械性選擇，先採用以下預設，作者可否決）：** 方案和根命名空間 `VehicleGo`（取自 repo 名稱）；專案 `VehicleGo.Domain`、`VehicleGo.Application`、`VehicleGo.Infrastructure`、`VehicleGo.Web`、`VehicleGo.UnitTests`、`VehicleGo.IntegrationTests`；資料夾 `src/`（後端）、`tests/`（後端測試）、`web/`（Vue 前端）。
 
 ## Critical User Journeys (CUJs)
 
