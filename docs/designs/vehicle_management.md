@@ -229,7 +229,7 @@
 - **登入：** 預設的驗證方式是 cookie，Google 透過 OIDC 登入；`/api` 未登入時回傳 401，不轉址；cookie 驗證事件每次請求都重新檢查名單。
 - **CSRF：** 用框架內建的 `IAntiforgery`。先檢查登入，再檢查 CSRF。
 - **錯誤處理：** Application 回傳的錯誤代碼，在這一層統一轉成 ProblemDetails 和 HTTP 狀態碼。
-- **其他：** 健康檢查（`/health/live`、`/health/ready`）；提供 Vue 建置後的靜態檔，並把非 `/api` 的路徑導向 `index.html`；啟動時檢查 `MASTER_KEY`、Asia/Taipei 時區、`ALLOWED_EMAILS`；只在 `IntegrationTest` 環境註冊的測試用登入端點。
+- **其他：** 健康檢查（`/health/live`、`/health/ready`）；提供 Vue 建置後的靜態檔，並把非 `/api` 的路徑導向 `index.html`；啟動時檢查 `MASTER_KEY`、Asia/Taipei 時區、`ALLOWED_EMAILS`。正式程式碼裡**沒有**任何測試用的登入端點（審查第 5 階段 M5）；整合測試需要的登入端點只存在於 `IntegrationTests` 專案。
 
 **前端（`web/`，Vue SPA）**
 - **頁面：** 登入、此帳號尚未開放使用、車輛列表、新增與編輯車輛、垃圾桶、設定（曆法）。
@@ -875,7 +875,6 @@ Calculate(vehicle, today):
 | `Errors/ErrorCodeMapping.cs` | 錯誤代碼 → HTTP 狀態碼與 ProblemDetails |
 | `Contracts/VehicleInput.cs`、`UpdateVehicleRequest.cs`、`UpdatePreferencesRequest.cs` | 請求資料 |
 | `Controllers/AuthController.cs`、`MeController.cs`、`VehiclesController.cs`、`TrashController.cs`、`ReferenceController.cs` | 1.4 節的端點；handler 用 `[FromServices]` 注入在 action 上 |
-| `Controllers/IntegrationTestAuthController.cs` | 只在 `IntegrationTest` 環境註冊的測試登入端點 |
 
 #### 2.6 `tests/VehicleGo.UnitTests/`（xUnit）
 
@@ -902,9 +901,10 @@ Calculate(vehicle, today):
 | --- | --- |
 | `VehicleGo.IntegrationTests.csproj` | 參考 Web；xUnit、Testcontainers.PostgreSql、`Microsoft.AspNetCore.Mvc.Testing` |
 | `Infrastructure/PostgresFixture.cs` | 讀 `postgres-image.txt` 啟動 PostgreSQL，套用兩個 DbContext 的 migration |
-| `Infrastructure/VehicleGoFactory.cs` | `IntegrationTest` 環境；記憶體中產生的 `MASTER_KEY`；可替換的名單；`FakeTimeProvider` |
+| `Infrastructure/TestLoginEndpoint.cs` | 測試用的登入端點：直接為指定的測試使用者發出真正的登入 cookie。只由 `VehicleGoFactory` 透過 `ConfigureTestServices` 加上的 startup filter 對應路由，正式的 Web 專案完全不含這段程式（審查第 5 階段 M5） |
+| `Infrastructure/VehicleGoFactory.cs` | `IntegrationTest` 環境；註冊 `TestLoginEndpoint`；記憶體中產生的 `MASTER_KEY`；可替換的名單；`FakeTimeProvider` |
 | `Infrastructure/TestClient.cs` | 透過測試登入端點取得**真正的** cookie，自動帶 XSRF token。所有整合測試都走真正的 cookie 驗證和每次請求的名單檢查，不使用假的登入處理器（作者決定，取代 brief 第 8 節「一般測試用假的登入處理器」的寫法） |
-| `AuthTests.cs` | `/api` 未登入回 401（不轉址）；移出名單後下一個請求 401；`returnUrl` 拒絕外部網址；登出要 CSRF；同時第一次登入只建立一筆；測試登入端點在非 `IntegrationTest` 環境不存在 |
+| `AuthTests.cs` | `/api` 未登入回 401（不轉址）；移出名單後下一個請求 401；`returnUrl` 拒絕外部網址；登出要 CSRF；同時第一次登入只建立一筆 |
 | `CsrfTests.cs` | 沒帶 header 回 `CSRF_INVALID`；未登入時先回 401 |
 | `VehicleTests.cs` | 1.5 節每個錯誤代碼至少一個測試；車牌重複（使用中、垃圾桶）；垃圾桶流程；滿 30 天的垃圾桶車輛在新增或登入時被刪除、讀取時看不到（用 `FakeTimeProvider` 控制時間） |
 | `ConcurrencyTests.cs` | 舊版本回 `VEHICLE_MODIFIED`；沒帶版本回 `VERSION_REQUIRED` |
