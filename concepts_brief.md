@@ -292,9 +292,9 @@
 - **部署：** 手動執行 `deploy.sh`；分支安排（`main` + `prod`，或只用 `main` 加 tag）待部署時再決定。
 - **CI：** GitHub Actions 只跑測試，雲端 runner、無 secrets。
 
-**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，兩把金鑰放 `.env`；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `git pull` → `pg_dump` → `docker compose up -d --build`；Caddy 只在 VPS 啟用；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它。
+**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，兩把金鑰放 `.env`；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `git pull` → `pg_dump` → `docker compose up -d --build`；Caddy 只在 VPS 啟用；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點。
 
-**審查建議、本版已採用（作者沒有逐項確認，可以否決）：** cookie 名單測試走真正的 cookie 機制；`AddOpenIdConnect`；只申請 `openid email`；Data Protection 金鑰存 PostgreSQL；CSRF 用 XSRF cookie + header；forwarded headers 信任 Compose 網路；migration 只增不改；規則引擎輸出檢驗項目清單；級距清單由 API 提供給前端；規則計算方式用型別表示；CI 也建置前端、檢查 `.env` 沒被追蹤。
+**審查建議、本版已採用（作者沒有逐項確認，可以否決）：** `AddOpenIdConnect`；只申請 `openid email`；Data Protection 金鑰存 PostgreSQL；CSRF 用 XSRF cookie + header；forwarded headers 信任 Compose 網路；migration 只增不改；規則引擎輸出檢驗項目清單；級距清單由 API 提供給前端；規則計算方式用型別表示；CI 也建置前端、檢查 `.env` 沒被追蹤。
 
 **待作者決定：** 無。
 
