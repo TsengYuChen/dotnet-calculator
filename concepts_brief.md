@@ -149,7 +149,7 @@
 ### 10. 部署
 
 - **作者決定：第一版只部署在本機 Docker（Docker Compose），當作測試環境；測試沒問題才部署到正式的 VPS。** VPS 實際上是 k3s，Cloudflare 代理（橘色雲朵）+ 原點憑證；部署到 VPS 時要改寫成 Kubernetes 資源（Deployment、Service、Ingress／Traefik TLS Secret、migration Job、Secret、備份 CronJob），屆時再設計。為了日後好移植，所有設定（連線字串、金鑰、名單）一律從環境變數讀取：本機由 `.env` 提供，k3s 由 Secret 提供，程式不需要改。
-- **`docker compose up -d` 不會重建映像檔。** `git pull` 之後只執行 `up -d`，跑的還是舊程式，而且看起來一切正常。**作者決定：** 寫一個 `deploy.sh`，內容依序為：`pg_dump`（部署前備份，資料庫還沒啟動時跳過）→ `docker compose up -d --build`；本機就是開發機，所以不執行 `git pull`（第四輪修正，見第 15 節）。API 啟動時寫出 git commit SHA，`/health/live` 也回傳 SHA，用來確認現在跑的是哪一版。第四輪對本機版 `deploy.sh` 的修正（第一次執行時資料庫還沒啟動、SHA 怎麼進映像檔、本機執行 `git pull` 的問題）見第 15 節。
+- **`docker compose up -d` 不會重建映像檔。** 改完程式後只執行 `up -d`，跑的還是舊程式，而且看起來一切正常。**作者決定：** 寫一個 `deploy.sh`，內容依序為：`pg_dump`（部署前備份，資料庫還沒啟動時跳過）→ `docker compose up -d --build`；本機就是開發機，所以不執行 `git pull`（第四輪修正，見第 15 節）。API 啟動時寫出 git commit SHA，`/health/live` 也回傳 SHA，用來確認現在跑的是哪一版。第四輪對本機版 `deploy.sh` 的修正（第一次執行時資料庫還沒啟動、SHA 怎麼進映像檔、本機執行 `git pull` 的問題）見第 15 節。
 - **映像檔：** 一個 multi-stage Dockerfile（Node 建置 Vue → .NET publish → runtime 映像檔提供 API 和靜態檔），另外一個 migration bundle 的 target。
 - **Compose 服務：**
   - `db`：用 `pg_isready` 做 healthcheck。
