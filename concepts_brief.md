@@ -27,7 +27,7 @@
 - **「檢驗期間內」也可能誤導。** 期間第一天就驗完的車，到期限前都還會顯示「可以去驗車」。
 - **「尚未到期」也可能誤導。** 錯過期限後，系統會顯示下一個週期並標成「尚未到期」，對沒去驗車的人來說這是錯的。
 
-**作者決定（原為審查建議）：** 所有狀態文字只陳述「期間」這個事實，不做判斷，例如「下次檢驗期間：114/03/15 起」「目前為可驗車期間（已驗車可忽略）」。
+**作者決定（原為審查建議）：** 所有狀態文字只陳述「期間」這個事實，不做判斷，顯示文字見第 4 節的狀態表。
 
 **作者決定：畫面上加免責聲明。** 這是「不顯示逾期」唯一的補償措施。位置和最終文字見第 4 節。
 
@@ -37,10 +37,10 @@
 
 **作者決定：第一版規則只寫在程式裡，不存資料庫。** 理由：沒有管理頁的情況下，存資料庫只是多一份要和程式同步的資料。
 
-- 規則引擎是獨立的 C# class library（不引用 EF Core、ASP.NET），是一個純函式：輸入（車輛資料、今天），輸出**一份檢驗項目清單**，每一項包含：檢驗種類（固定代碼 `PERIODIC` 定期檢驗、`EXHAUST` 排氣定檢）、狀態、期間起日、最後期限、規則 ID。原因：大型重型機車可能同時有兩種檢驗。**只回傳該車種有的檢驗（作者決定）**：自用小客車只有 `PERIODIC`；一般燃油機車只有 `EXHAUST`；大型重型機車有 `PERIODIC` 和 `EXHAUST`；電動機車回傳一項 `EXHAUST`，狀態為「免檢」（讓使用者知道機車有排氣定檢、但電動車免驗）。車齡未滿 5 年的車仍回傳該項檢驗，狀態為「下次期間」，日期為第一次檢驗的期間。規則表放在同一個 library 裡；為了方便測試，規則表也可以從參數傳入。
+- 規則引擎是獨立的 C# class library（不引用 EF Core、ASP.NET），是一個純函式：輸入（車輛資料、今天），輸出**一份檢驗項目清單**，每一項包含：檢驗種類（固定代碼 `PERIODIC` 定期檢驗、`EXHAUST` 排氣定檢）、狀態、期間起日、最後期限、規則 ID、日期來源（`basis`：`LICENCE` 行照指定檢驗日期／`FORMULA` 公式）、是否推算（`estimated`），以及給 API 層寫 log 用的診斷資訊（`UNCOMPUTABLE` 的原因代碼、行照日期與公式不一致的旗標和公式算出的日期）。規則引擎是純函式，本身不寫 log，由 API 層依診斷資訊寫。原因：大型重型機車可能同時有兩種檢驗。**只回傳該車種有的檢驗（作者決定）**：自用小客車只有 `PERIODIC`；一般燃油機車只有 `EXHAUST`；大型重型機車有 `PERIODIC` 和 `EXHAUST`；電動機車回傳一項 `EXHAUST`，狀態為「免檢」（讓使用者知道機車有排氣定檢、但電動車免驗）。車齡未滿 5 年的車仍回傳該項檢驗，狀態為「下次期間」，日期為第一次檢驗的期間。規則表放在同一個 library 裡；為了方便測試，規則表也可以從參數傳入。
 - 每條規則有固定 ID 和法規出處（法規名稱、條號、修正日期）。API 回傳規則 ID，畫面上可以顯示依據的條文。
-- 計算方式用 C# 的型別或 enum 表示（例如「每年一次、以原發照日為基準」「每年兩次」「免檢」）。打錯字時編譯就會失敗，不需要啟動時再檢查。
-- 用單元測試確認規則表涵蓋每一種「車種 × 檢驗種類 × 車齡區間（未滿 5 年、5–10 年、10 年以上）」組合，沒有重疊、沒有缺口。排氣量級距不影響任何規則，所以不列入。
+- 計算方式用 C# 的型別或 enum 表示（例如「每年一次、以原發照日為基準」「以行照指定檢驗日期為基準」「每年兩次」「免檢」）。打錯字時編譯就會失敗，不需要啟動時再檢查。
+- 用單元測試確認規則表涵蓋每一種「車種 × 檢驗種類 × 車齡區間（未滿 5 年、5–10 年、10 年以上）」組合，沒有重疊、沒有缺口，並分別測試有填和沒填行照指定檢驗日期。排氣量級距不影響任何規則，所以不列入。
 - 改規則就是改程式並重新部署，git 歷史就是規則的版本紀錄。
 
 **仍未解決：法規修正時，舊規則要怎麼處理？** 如果只看「今天」選規則，法規一修正，所有人的日期都會一起改，效果跟直接改程式一樣，日後再加的「生效日」就沒有用處。生效日只有在「用車輛的某個日期選規則」時才有意義，例如新規定只適用於某天以後發照的車。台灣的修法常有這類過渡條款。
@@ -55,11 +55,11 @@
 - **一年驗兩次**（汽車、大型重機滿 10 年以上）：法規沒有公開第二次日期的算法（見第 14 節 2b）。**作者決定：每年第二次期間 = 當年的指定檢驗日期 + 6 個月**，月底往前夾（例如 8/31 + 6 個月 = 2/28 或 2/29）。檢驗項目多一個 `estimated: true` 旗標，畫面標示「推算日期，請以行照為準」。推算的項目照樣變色、參與排序（作者決定）。**注意：「期限只會比實際早、不會比實際晚」的原則不適用於推算項目**，實際日期可能比推算早，也可能比推算晚。
 - **第一次期間與 10 年切換的規則（第四輪補充，見第 15 節）：** 定期檢驗的第一次指定日期 = 原發照日在「出廠日 + 5 年」當天或之後的第一個週年日；排氣定檢的第一次期間 = 最後期限在「出廠日 + 5 年」當天或之後的第一個期間（選較早的一個，符合「只會提早」的原則）；某個指定日期當天車齡已滿 10 年，該年才多一個 + 6 個月的推算期間；排氣定檢不論車齡都是每年一次。系統顯示的是「最後期限在今天或之後的最早期間」。
 - **行照指定檢驗日期（選填，作者決定，第四輪）：** 自用小客車和大型重型機車多一個選填欄位 `licence_inspection_date`（`date`，可以是未來的日期），只用於定期檢驗；一般燃油機車和電動機車不顯示這個欄位（排氣定檢以月份計算，行照沒有印這個日期）。
-  - **有填：** 以這個日期為準，期間 = 該日前後一個月；最後期限過了就往後推一年（滿 10 年的車另加 + 6 個月的推算期間）。
-  - **沒填：** 照公式計算。
-  - **兩者不一致：** 寫一筆 log（原因代碼 `LICENCE_DATE_MISMATCH`，內容含公式算出的日期和行照日期，不含車牌），當作比對法規算法的真實資料，畫面仍以行照日期為準。
+  - **有填：** 以這個日期 L 為準（車齡未滿 5 年的車也一樣）。期間序列為 L、L + 1 年、L + 2 年……；某個日期當天車齡已滿 10 年時，該日期 + 6 個月再多一個推算期間（`estimated: true`）。只有 + 6 個月的期間標成推算，L 往後推的整年期間不標。系統顯示最後期限在今天或之後的最早期間。這些項目 `basis = LICENCE`，規則 ID 用行照專用的 ID（例如 `RTS44-CAR-LICENCE`），畫面在該項目旁標示「依行照指定檢驗日期」。
+  - **沒填：** 照公式計算，`basis = FORMULA`。
+  - **兩者不一致：** 判斷方式：L 的月日和公式算出的指定日期月日相同，或和公式日期 + 6 個月的月日相同（滿 10 年的車，行照可能印的是第二次的日期），就算一致；否則不一致。只在新增或修改車輛時（行照日期、出廠日、原發照日有變動）由 API 層寫一筆 log，不在每次讀取時寫。log 內容：原因代碼 `LICENCE_DATE_MISMATCH`、車輛內部 ID、車齡、公式日期、行照日期，不含車牌。畫面以行照日期為準。
   - **已知限制：** 每次驗完車行照上的日期會換新，使用者沒更新時，系統以舊日期往後推一年；如果使用者提早或延後驗車導致新行照日期改變，推算可能不準。欄位說明寫「請填行照上最新的指定檢驗日期」。
-  - 驗證：不能早於原發照日。
+  - 驗證：不能早於原發照日（400 `LICENCE_DATE_BEFORE_ISSUE`）；一般燃油機車和電動機車送這個欄位時回傳 400 `LICENCE_DATE_NOT_ALLOWED`；資料庫 check constraint 確保只有汽車和大型重機可以有值；表單上改車種時清空這個欄位。日期下拉選單的範圍和其他日期不同，見第 9 節。
 - **2/29 和月底**：用 `DateOnly.AddYears` / `AddMonths` 的夾到月底行為。這不一定符合《民法》第 120–122 條，作為已知的簡化寫進文件。
 - **假日順延：** 依查到的資料，期限最後一天遇假日可順延到下一個上班日。系統**不順延**（維持原決定）：顯示的期限只會比實際早、不會晚，誤差在保守方向；畫面上註明「期限遇假日可能順延，請以監理機關為準」。
 - **原發照日**：過戶會換發新行照，但驗車依「原」發照日。欄位名稱和說明都要寫「原發照日期」。
@@ -83,7 +83,7 @@
 ### 5. 車輛資料與排氣量
 
 - 車種：自用小客車、一般燃油機車、大型重型機車、電動機車。**大型重型機車是獨立車種（作者決定）**，不由排氣量級距推導。每個車種有自己可用的級距：一般燃油機車只能選一般機車的級距，大型重型機車只能選大型重機的級距；不符合時回傳 `BRACKET_TYPE_MISMATCH`。`/egm-draft` 要寫出「車種 → 可用級距代碼 → 必填／不填」對照表。車種用固定的字串代碼儲存。
-- 欄位：車牌、廠牌、型號、暱稱、顏色、車種、排氣量級距、出廠日期、原發照日期。暱稱、顏色可以不填。
+- 欄位：車牌、廠牌、型號、暱稱、顏色、車種、排氣量級距、出廠日期、原發照日期、行照指定檢驗日期（選填，只限汽車和大型重機，見第 3 節）。暱稱、顏色、行照指定檢驗日期可以不填。
 - **大型重型機車納入第一版（作者決定），排氣量改回必填、用級距下拉選單（作者決定）。**
   - 範圍變大：大型重型機車要做定期檢驗（道安規則第 44 條，待核對），規則和一般機車不同，可能同時有定期檢驗和排氣定檢兩種期間。規則表、測試案例、法規核對都要增加。
   - **各車種的排氣量規則：**
@@ -92,11 +92,11 @@
     - 電動機車：不顯示這個欄位，存 null，用資料庫 check constraint 確保只有電動機車可以是 null。
   - **級距標籤不能重疊**，要寫清楚邊界值屬於哪一級（如上）。欄位旁的說明文字：「請依行照上的排氣量選擇」。
   - **級距代碼**描述 cc 範圍（例如 `MC_51_250`、`CAR_1201_1800`），不用稅級編號。級距清單寫在規則引擎 library 裡並附法規出處，前端透過 `GET /api/reference/displacement-brackets` 取得（回傳代碼、中文標籤、適用車種），不在 TypeScript 裡另外抄一份。
-  - 大型重型機車門檻已核對為「逾 250cc」（見第 14 節）。第一位真實使用者進來之前，改級距代碼不需要資料遷移；之後若牌照稅級距或法規門檻修改，已存的代碼需要資料遷移，這是「migration 只增不改」規則的例外。
+  - 大型重型機車門檻已核對為「逾 250cc」（見第 14 節）。第一次部署到正式 VPS 之前，改級距代碼不需要資料遷移；之後若牌照稅級距或法規門檻修改，已存的代碼需要資料遷移，這是「migration 只增不改」規則的例外。
   - 之後做牌照稅時，若機車稅級和驗車門檻對不上，需要另外收精確的 cc 數。
 - **輸入驗證：** 原發照日不能早於出廠日，兩者都不能是未來的日期。級距必須屬於該車種可用的級距，否則回傳 400 ProblemDetails，錯誤代碼 `BRACKET_TYPE_MISMATCH`。表單上改車種時，已選的級距要清空。
 - **排序：** 檢驗期間是讀取時才計算，所以在記憶體裡排序、不分頁。可依出廠日或最後期限排序，預設依最後期限由近到遠。一台車有多個檢驗項目時，用其中有日期的項目裡最早的最後期限排序；所有項目都是「免檢」或「無法計算」的車排最後；同日期依車牌排序。
-- **每人車輛數上限（作者決定）：** 每個使用者最多 50 台，垃圾桶裡的車也算。新增時超過上限回傳 409，錯誤代碼 `VEHICLE_LIMIT_REACHED`，提示「已達 50 台車輛上限（含垃圾桶），請先永久刪除垃圾桶裡不需要的車輛」。上限在新增的同一個交易裡檢查；同一個人同時送出兩筆新增時可能多出一台，這種情況可以接受。整合測試涵蓋第 51 台被擋下。
+- **每人車輛數上限（作者決定）：** 每個使用者最多 50 台，垃圾桶裡的車也算。新增時超過上限回傳 409，錯誤代碼 `VEHICLE_LIMIT_REACHED`，ProblemDetails 附上目前的車輛數和垃圾桶車輛數（`activeCount`、`trashCount`），提示文字依情況調整，例如「已達 50 台車輛上限（其中垃圾桶 N 台）。請永久刪除不需要的車輛」。上限是程式常數 50。計算數量時只關閉「已刪除」過濾器，不能呼叫 `IgnoreQueryFilters()`（否則會算到別人的車）。從垃圾桶還原不改變數量。上限在新增的同一個交易裡檢查；同一個人同時送出兩筆新增時可能多出一台，這種情況可以接受。整合測試涵蓋第 51 台被擋下。
 - **同時編輯檢查（作者決定）：** 讀取車輛時回傳 `version`（PostgreSQL `xmin`），修改（`PUT`，整筆取代）時必須帶回，不一致回傳 409、錯誤代碼 `VEHICLE_MODIFIED`，畫面提示「資料已被修改，請重新整理」（使用者剛填的內容不保留）。丟進垃圾桶、還原、永久刪除不檢查版本，由車輛狀態決定：修改垃圾桶裡的車回傳 409 `VEHICLE_IN_TRASH`；永久刪除不在垃圾桶裡的車回傳 409 `VEHICLE_NOT_IN_TRASH`。實作細節見第 15 節。
 - **刪除：** 先丟進垃圾桶，可以還原或永久刪除，不自動清空（作者決定）。垃圾桶裡的車不能修改、不顯示驗車狀態；只有垃圾桶裡的車能永久刪除，刪除前要再確認一次。`deleted_at` 用 `timestamptz`。
 
@@ -130,7 +130,8 @@
 - **Data Protection 金鑰（作者決定）：** 存在 PostgreSQL，並用從主金鑰推導出的 Data Protection 金鑰以 AES-GCM 加密（自行實作 `IXmlEncryptor` / `IXmlDecryptor`，associated data 為 `dpkey:v1`）。資料庫備份單獨拿到也解不開；還原時需要同一份 `.env`。實作細節見第 15 節。
 - `/api` 未登入時回傳 401，不轉址（OIDC 預設會轉址到 Google，需要特別處理，見第 15 節）。Cookie 設定 `HttpOnly`、`Secure`（`CookieSecurePolicy.Always`）、`SameSite=Lax`。本機用 `http://localhost` 時，只保證 Chrome 和 Firefox 能登入（它們把 localhost 視為安全來源），網址固定為 `http://localhost:<固定 port>`，不要用 `127.0.0.1` 或區網 IP。
 - **CSRF：** 用 `XSRF-TOKEN` cookie 加上 `X-XSRF-TOKEN` header，所有非 GET 的 `/api` 請求都要驗證（JSON API 不會自動檢查），用框架內建的 `IAntiforgery` 實作（見第 15 節），並寫一個整合測試確認沒帶 header 的請求會被拒絕。
-- SPA 和 API 在同一個網域。開發時用 Vite proxy 轉發 `/api`、`/signin-oidc`、登入和登出端點；Vite proxy 預設保留 `Host`，所以 Google 要同時註冊 Vite 的 port 和 Compose 的 port 兩個 redirect URI。登出是 `POST`，也要經過 CSRF 檢查。
+- **登入和登出端點：** 登入是 `GET /api/auth/login?returnUrl=…`，呼叫 OIDC 的 Challenge；`returnUrl` 只接受站內的相對路徑，避免被用來導向外部網站。登出是 `POST /api/auth/logout`，放在 `/api` 底下，所以會經過 CSRF 檢查。登入完成後，SPA 必須重新呼叫一次 `GET /api/me` 取得綁定新身分的 CSRF token，才能送出任何 POST。整合測試專用的登入端點不做 CSRF 檢查（只存在於 `IntegrationTest` 環境）。
+- SPA 和 API 在同一個網域。開發時用 Vite proxy 轉發 `/api` 和 `/signin-oidc`；Vite proxy 預設保留 `Host`，所以 Google 要同時註冊 Vite 的 port 和 Compose 的 port 兩個 redirect URI。
 - OIDC 失敗（`OnRemoteFailure`）時要寫 log、顯示錯誤頁，不要回 500。
 - Google 同意畫面設為「In production」。第一版只註冊本機的 redirect URI（Compose 和 Vite 開發伺服器兩個 `http://localhost:<port>/signin-oidc`，必須完全相符，包含 port）；VPS 的網址等部署 VPS 時再加。
 
@@ -141,7 +142,7 @@
 - **「今天」**：`TimeProvider` 取得 UTC 時間 → 轉成 Asia/Taipei → 取日期。容器映像檔必須包含 tzdata（不用 chiseled 或 Alpine 映像檔），啟動時確認找得到 Asia/Taipei，找不到就直接失敗。
 - **民國／西元（作者決定）：** 使用者在個人設定選一次，輸入和顯示全站套用，預設民國。API 一律收送西元 `YYYY-MM-DD`。
 - **民國／西元的輸入與顯示：**
-  - **日期輸入用年、月、日三個下拉選單（作者決定）**，年份依設定顯示民國或西元（例如「114」或「2025」），範圍從今年往前 50 年、不能選未來；如果已存的日期比 50 年前更早，選單也要包含那一年（編輯時才不會遺失）。日的選項隨年、月變動（2 月依閏年 28 或 29 天）；送出前組成西元 `YYYY-MM-DD`。不需要解析文字。
+  - **日期輸入用年、月、日三個下拉選單（作者決定）**，年份依設定顯示民國或西元（例如「114」或「2025」），出廠日期和原發照日期的範圍是從今年往前 50 年、不能選未來；如果已存的日期比 50 年前更早，選單也要包含那一年（編輯時才不會遺失）。行照指定檢驗日期的範圍不同：從原發照年份到今年 + 2 年（指定檢驗日期通常在未來）。日的選項隨年、月變動（2 月依閏年 28 或 29 天）；送出前組成西元 `YYYY-MM-DD`。不需要解析文字。
   - 換算差一年（1911）會讓所有驗車日期跟著錯。**換算寫成獨立的 TypeScript 模組，用 Vitest 寫單元測試，列為成功標準之一並放進 CI。**
   - 前端**絕對不要**把 `date` 值丟進 JavaScript 的 `Date`：`new Date('2020-03-01')` 會被當成 UTC 午夜，在某些時區會顯示成前一天。直接當成年、月、日三個數字處理。
   - **偏好存在資料庫（作者決定）。** 使用者表加一個欄位，存固定代碼 `ROC` / `GREGORIAN`，預設 `ROC`。API：`GET /api/me` 回傳 200 `{ "email": "…", "calendar": "ROC" }`，未登入回傳 401；`PATCH /api/me/preferences` 接收 `{ "calendar": "GREGORIAN" }`，回傳 200 和完整的 `/api/me` 內容，值不合法時回傳 400，錯誤代碼 `INVALID_CALENDAR`，並受 CSRF 檢查。SPA 啟動時呼叫一次 `/api/me`，決定顯示登入頁或已登入畫面，並取得曆法設定。前端放一個簡單的設定頁。資料庫欄位：`calendar_preference text NOT NULL DEFAULT 'ROC'` 加 check constraint。登入前的頁面（登入頁、「此帳號尚未開放使用」）用民國。隔離測試要確認使用者 A 不能讀寫 B 的設定（端點本身只操作目前登入者，沒有使用者 ID 參數）。
@@ -149,7 +150,7 @@
 ### 10. 部署
 
 - **作者決定：第一版只部署在本機 Docker（Docker Compose），當作測試環境；測試沒問題才部署到正式的 VPS。** VPS 實際上是 k3s，Cloudflare 代理（橘色雲朵）+ 原點憑證；部署到 VPS 時要改寫成 Kubernetes 資源（Deployment、Service、Ingress／Traefik TLS Secret、migration Job、Secret、備份 CronJob），屆時再設計。為了日後好移植，所有設定（連線字串、金鑰、名單）一律從環境變數讀取：本機由 `.env` 提供，k3s 由 Secret 提供，程式不需要改。
-- **`docker compose up -d` 不會重建映像檔。** 改完程式後只執行 `up -d`，跑的還是舊程式，而且看起來一切正常。**作者決定：** 寫一個 `deploy.sh`，內容依序為：`pg_dump`（部署前備份，資料庫還沒啟動時跳過）→ `docker compose up -d --build`；本機就是開發機，所以不執行 `git pull`（第四輪修正，見第 15 節）。API 啟動時寫出 git commit SHA，`/health/live` 也回傳 SHA，用來確認現在跑的是哪一版。第四輪對本機版 `deploy.sh` 的修正（第一次執行時資料庫還沒啟動、SHA 怎麼進映像檔、本機執行 `git pull` 的問題）見第 15 節。
+- **`docker compose up -d` 不會重建映像檔。** 改完程式後只執行 `up -d`，跑的還是舊程式，而且看起來一切正常。**作者決定：** 寫一個 `deploy.sh`，內容依序為：`pg_dump`（部署前備份，資料庫還沒啟動時跳過）→ `docker compose up -d --build`；本機就是開發機，所以不執行 `git pull`（第四輪修正，見第 15 節）。API 啟動時寫出 git commit SHA，`/health/live` 也回傳 SHA，用來確認現在跑的是哪一版。細節見第 15 節。
 - **映像檔：** 一個 multi-stage Dockerfile（Node 建置 Vue → .NET publish → runtime 映像檔提供 API 和靜態檔），另外一個 migration bundle 的 target。
 - **Compose 服務：**
   - `db`：用 `pg_isready` 做 healthcheck。
@@ -158,7 +159,7 @@
   - 不需要 Caddy：本機直接用 `http://localhost`（Google OAuth 允許 localhost 用 HTTP）。
   - 設定 Docker log 輪替（`max-size`、`max-file`），避免磁碟被 log 塞滿。
 - **反向代理與 forwarded headers：延後到 VPS 部署時處理。** 第一版只在本機、沒有反向代理，不需要設定。屆時要信任的是 k3s 裡的 Traefik（Pod 網段），並寫測試確認 `X-Forwarded-Proto: https` 時 redirect_uri 為 https。
-- **回滾：** **從第一次部署到正式 VPS 開始**，migration 只能「增加」（新增可為 null 或有預設值的欄位、新增資料表），不能在同一版裡改名或刪除。回滾的做法是：在 `main` revert → 更新部署用的分支或 tag → 重新部署。只有在 migration 本身必須撤銷時，才還原部署前的 dump。 在那之前（只有本機測試資料時），migration 可以自由修改或重新產生，資料庫直接清空重建。
+- **回滾：** **從第一次部署到正式 VPS 開始**，migration 只能「增加」（新增可為 null 或有預設值的欄位、新增資料表），不能在同一版裡改名或刪除。回滾的做法是：在 `main` revert → 更新部署用的分支或 tag → 重新部署。只有在 migration 本身必須撤銷時，才還原部署前的 dump。在那之前（只有本機測試資料時），migration 可以自由修改或重新產生，資料庫直接清空重建。
 - **備份：** 本機是測試環境，不需要排程備份。`deploy.sh` 裡的 `pg_dump` 保留，用來練習和驗證備份、還原流程。正式的備份排程（保留 7 份每日、4 份每週，dump 和金鑰分開存放並複製到主機以外）等部署 VPS 時一起設計。
 - **（只在選擇 `main` + `prod` 時）`prod` 只能從 `main` 合併：** GitHub 的分支保護設不出「只能從某個分支合併」。要用一個必要的 CI 檢查：PR 目標是 `prod` 時，來源不是 `main` 就失敗。
 - **兩個分支、兩個環境的必要性**也被審查者質疑：一個人開發，`main` + `prod` 兩條長期分支、兩份 `.env`、兩個 redirect URI 是額外負擔。替代做法：只用 `main`，VPS 部署某個 tag。**作者決定：先記成待定，真正要部署時再決定。** 兩種做法的 CI 完全相同；差別只在「上線」是開 `main` → `prod` 的 PR（需要額外的來源分支檢查），還是在 `main` 打 tag。
@@ -169,7 +170,7 @@
 - 實際的值放在 `.env`，加進 `.gitignore`，只存在各台主機上。repo 裡只有 `.env.example`，範例 Email 一律用 `example.com`。
 - `docker-compose.yml` 只引用變數，例如 `${ALLOWED_EMAILS}`。
 - Google Client ID / Secret、資料庫密碼也都放進 `.env`。
-- 密鑰檢查：CI 和 pre-commit hook 共用 `scripts/check-secrets.sh`（細節見第 15 節）：`.env`（含子資料夾）被 git 追蹤時失敗；只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域。**gitleaks 在 hook 和 CI 都加（作者決定，取代「第一版不加」）**：補上 `check-secrets.sh` 抓不到的缺口（密鑰被直接寫進設定檔或程式）。hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊用同一份 commit 進 repo 的 `.gitleaks.toml`（含誤判排除）；gitleaks 版本固定寫在 repo 裡；開發機沒安裝 gitleaks 時 hook 直接失敗並提示安裝方式；CI 直接執行 gitleaks 程式，不用官方 GitHub Action。
+- 密鑰檢查：CI 和 pre-commit hook 共用 `scripts/check-secrets.sh`（細節見第 15 節）：`.env`（含子資料夾）被 git 追蹤時失敗；只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域。另外 hook 和 CI 都跑 gitleaks（作者決定），細節見第 15 節。
 
 ### 12. CI（作者決定：用 GitHub Actions 跑測試，不部署）
 
@@ -177,7 +178,8 @@
 - 只用 GitHub 雲端 runner（`ubuntu-latest`，內建 Docker，Testcontainers 可以直接用），不用 self-hosted runner。
 - workflow 不需要任何 secrets，權限設為唯讀（`permissions: contents: read`），不使用 `pull_request_target`。
 - 除了 .NET 測試，也要跑 `npm ci && npm run build`（以及型別檢查和民國／西元換算的單元測試），避免壞掉的前端被部署。
-- PostgreSQL 映像檔版本只寫在一個地方，Compose 和 Testcontainers 都讀它。
+- 密鑰檢查也在 CI 裡跑：`check-secrets.sh` 和 gitleaks 各一個固定名稱的 job（見第 15 節）。
+- PostgreSQL 映像檔版本、.NET 和 Node 版本的固定方式見第 15 節。
 - `main`（以及之後若有的 `prod`）要求 CI 通過才能合併。
 
 ### 13. 可觀察性
@@ -186,6 +188,7 @@
 - 結構化 log，ProblemDetails 回應帶 `traceId`，錯誤頁面也顯示 `traceId`，讓使用者回報。
 - 「無法計算」時，每個無法計算的檢驗項目寫一筆：車輛內部 ID、車種、排氣量級距代碼、檢驗種類、嘗試過的規則 ID、原因代碼、git SHA。**不寫車牌**。
 - 登入被拒時寫出原因代碼和 `email_lookup_hash` 的前 8 碼。
+- 行照指定檢驗日期和公式不一致時，寫 `LICENCE_DATE_MISMATCH`（只在新增或修改車輛時，見第 3 節）。
 
 ### 14. 法規核對結果（2026-11-19 網路查證，第一手整理）
 
@@ -209,10 +212,10 @@
 
 - **期間基準：** 汽車和大型重機以「發照日的月日」為基準、前後一個月（以日計），這和原本的設計一致。機車排氣定檢以「發照月份」為基準、前後一個月（以月計，從前一個月 1 日到後一個月最後一天），規則引擎要有兩種計算方式。
 - **假日順延：** 原本的設計是「不順延」，但查到的資料顯示期限最後一天遇假日可以順延。系統不順延的話，顯示的期限只會比實際早，不會晚，屬於保守方向的誤差；畫面上要註明。
-- **滿 10 年後的第二次期間：** 查不到計算方式。**作者決定：以第一次 + 6 個月推算，畫面標示為推算**（見第 3 節）。
+- **滿 10 年後的第二次期間：** 查不到計算方式。**作者決定：每年第二次期間 = 當年的指定檢驗日期 + 6 個月，畫面標示為推算**（見第 3 節）。
 - **出廠到發照之間隔很長的車：** 依第 2a 項，第一次定檢日 = 發照日 + (5 − 間隔年數)。這等同第 3 節的「原發照日在出廠日 + 5 年當天或之後的第一個週年日」，要用測試案例確認。
 - **機車級距：** 驗車規則只有一個門檻（250cc），已由獨立車種表達。**作者決定：機車排氣量下拉選單保留，只作紀錄**（見第 5 節）。
-- **行照上本來就印著指定檢驗日期。** 系統自己算，可能和行照不一致（例如 2b 的第二次日期）。
+- **行照上本來就印著指定檢驗日期。** 系統自己算，可能和行照不一致（例如 2b 的第二次日期）。**作者決定：加選填欄位 `licence_inspection_date`**，有填時以它為準（見第 3 節）。
 
 **參考來源：**
 - 全國法規資料庫：道路交通安全規則第 44 條 https://law.moj.gov.tw/lawclass/LawSingle.aspx?media=print&pcode=K0040013&flno=44 ；沿革 https://law.moj.gov.tw/LawClass/LawHistory.aspx?pcode=K0040013
@@ -223,7 +226,7 @@
 
 ### 15. 第四輪審查的技術修正（作者整批接受）
 
-以下是第四輪 7 位審查者提出、屬於「技術上的正確做法」的修正，作者已整批接受。其中四項取代了先前的決定：CSRF 改用內建的 `IAntiforgery`；本機 `deploy.sh` 不執行 `git pull`；pre-commit hook 和 CI 共用同一支檢查腳本與規則；**gitleaks 在 hook 和 CI 都加（作者決定，取代「第一版不加」）**：補上 `check-secrets.sh` 抓不到的缺口（密鑰被直接寫進設定檔或程式）。hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊用同一份 commit 進 repo 的 `.gitleaks.toml`（含誤判排除）；gitleaks 版本固定寫在 repo 裡；開發機沒安裝 gitleaks 時 hook 直接失敗並提示安裝方式；CI 直接執行 gitleaks 程式，不用官方 GitHub Action。
+以下是第四輪 7 位審查者提出、屬於「技術上的正確做法」的修正，作者已整批接受。其中幾項取代了先前的決定：CSRF 改用內建的 `IAntiforgery`；本機 `deploy.sh` 不執行 `git pull`；pre-commit hook 和 CI 共用同一支檢查腳本與規則。之後作者另外決定 gitleaks 在 hook 和 CI 都加（取代原本的「第一版不加」），細節在本節「本機 Docker 與 CI」。
 
 **登入與 OIDC**
 - `OpenIdConnectOptions.Scope` 預設包含 `profile`，要先 `Scope.Clear()` 再加 `openid`、`email`；設定 `ResponseType = "code"`（預設不是授權碼流程）、`GetClaimsFromUserInfoEndpoint = false`（Google 的 ID token 已含 `email`、`email_verified`）。
@@ -235,9 +238,9 @@
 **加密與金鑰**
 - 共用的 AES-GCM 工具：`new AesGcm(key, tagSizeInBytes: 16)`、每次隨機 12 bytes nonce，儲存格式為「金鑰版本 1 byte + nonce + tag + 密文」，associated data 放用途字串（`email:v1`、`dpkey:v1`），避免兩種用途的密文互相替換。
 - Data Protection 的金鑰存在**獨立的小 DbContext**（只實作 `IDataProtectionKeyContext`，不套用擁有者過濾器），因為載入金鑰時沒有登入使用者。透過 `KeyManagementOptions.XmlEncryptor` 註冊加密器；解密器由框架依型別名稱建立，金鑰要從 DI 取得。呼叫 `SetApplicationName(...)` 固定應用程式名稱。用錯金鑰時，框架會默默產生新金鑰（所有人被登出），所以解密失敗要寫 Error 等級的 log，並加一個測試。
-- **一把主金鑰（作者決定）：** `.env` 只放一把 `MASTER_KEY`（32 bytes，Base64），用 HKDF-SHA256 依用途推導三把金鑰，推導標籤固定為 `email-enc/v1`、`email-hmac/v1`、`dataprotection/v1`，並用測試固定推導結果。主金鑰缺少或格式不對就啟動失敗。產生方式寫在 `.env.example`：`openssl rand -base64 32`。只想換其中一把時，改該用途的版本標籤（例如 `email-enc/v2`）；主金鑰外洩時三把都要換。
-- 測試時在記憶體裡隨機產生金鑰，repo 裡不放任何測試用的固定金鑰，密鑰掃描才不會誤判。
-- 換金鑰：支援選填的 `MASTER_KEY_PREVIOUS`（或舊版本標籤）讀取舊資料，使用者下次登入時用新金鑰重寫 Email 欄位；Data Protection 金鑰換掉後所有人重新登入一次。
+- **一把主金鑰（作者決定）：** `.env` 只放一把 `MASTER_KEY`（32 bytes，Base64），用 HKDF-SHA256 依用途推導三把金鑰，推導標籤固定為 `email-enc/v1`、`email-hmac/v1`、`dataprotection/v1`。HKDF 參數：salt 為空、`info` 為標籤的 UTF-8 位元組、輸出 32 bytes。用一組明顯是假的測試向量（例如 32 個 0 bytes 的主金鑰，或 RFC 5869 的測試向量）固定推導結果，這組向量加進 `.gitleaks.toml` 的排除清單。密文開頭的 1 byte 金鑰版本 = 標籤版本（`v1` 為 1）。主金鑰缺少或格式不對就啟動失敗。產生方式寫在 `.env.example`：`openssl rand -base64 32`。只想換其中一把時，改該用途的版本標籤（例如 `email-enc/v2`）；主金鑰外洩時三把都要換。
+- 測試時在記憶體裡隨機產生金鑰。repo 裡除了上述明顯是假的 HKDF 測試向量，不放任何固定金鑰。
+- **換金鑰的做法：待作者決定**（見 Key Decisions）。
 
 **資料與 API**
 - 同時編輯：`uint Version` 對應 `xmin`（`[Timestamp]` / `IsRowVersion()`；`UseXminAsConcurrencyToken()` 已過時）。PUT 時要把用戶端送來的 `version` 設成 `OriginalValue` 再存檔，否則 EF 會拿剛讀出來的版本比對，檢查形同虛設。`DbUpdateConcurrencyException` 對應 409 `VEHICLE_MODIFIED`。加一個「送舊版本被擋」的測試。
@@ -248,17 +251,21 @@
 
 **本機 Docker 與 CI**
 - 本機的 `deploy.sh`：本機就是開發機，不執行 `git pull`（避免蓋掉進行中的修改）；工作目錄有未 commit 的修改時，SHA 加上 `-dirty`；資料庫還沒啟動（第一次執行）時跳過 `pg_dump`；dump 存到加進 `.gitignore` 的 `backups/`，檔名含時間；另外寫明還原指令和清空重建指令（`docker compose down -v`）。
-- git SHA 用 `--build-arg GIT_SHA=$(git rev-parse HEAD)` 傳進映像檔（`.git` 不在 build context 裡）。
+- git SHA：`deploy.sh` 匯出環境變數 `GIT_SHA`（`git rev-parse HEAD`，工作目錄有未 commit 的修改時加 `-dirty`），Compose 用 `build.args: GIT_SHA: ${GIT_SHA}` 傳進映像檔（`.git` 不在 build context 裡；`docker compose up` 不接受 `--build-arg`）。
 - 健康檢查端點統一為 `/health/live`、`/health/ready`；容器 healthcheck 用 API 自帶的檢查指令呼叫 `/health/ready`。
 - PostgreSQL 映像檔版本寫在一個 commit 進 repo 的檔案裡（不能放 `.env`，CI 沒有 `.env`），Compose 和 Testcontainers 都讀它。.NET SDK 用 `global.json`、Node 用 `.nvmrc` 固定版本，Dockerfile 和 CI 用同一個版本。
-- 密鑰檢查統一成一支腳本 `scripts/check-secrets.sh`：pre-commit hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊規則相同（只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域）。原本寫的 `git ls-files .env` 不管有沒有追蹤都會成功，要改成「輸出不是空的就失敗」，並涵蓋子資料夾裡的 `.env`。hook 腳本要用 `git update-index --chmod=+x` 設定可執行。**gitleaks 在 hook 和 CI 都加（作者決定，取代「第一版不加」）**：補上 `check-secrets.sh` 抓不到的缺口（密鑰被直接寫進設定檔或程式）。hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊用同一份 commit 進 repo 的 `.gitleaks.toml`（含誤判排除）；gitleaks 版本固定寫在 repo 裡；開發機沒安裝 gitleaks 時 hook 直接失敗並提示安裝方式；CI 直接執行 gitleaks 程式，不用官方 GitHub Action。
-- CI 的 job 名稱和 npm script 名稱（`typecheck`、`test:unit`）在設計文件裡固定，分支保護才能指定必要檢查。
+- 密鑰檢查統一成一支腳本 `scripts/check-secrets.sh`：pre-commit hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊規則相同（只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域）。原本寫的 `git ls-files .env` 不管有沒有追蹤都會成功，要改成「輸出不是空的就失敗」，並涵蓋子資料夾裡的 `.env`。hook 腳本要用 `git update-index --chmod=+x` 設定可執行。
+- **gitleaks（作者決定：hook 和 CI 都加）：** 補上 `check-secrets.sh` 抓不到的缺口（密鑰被直接寫進設定檔或程式）。
+  - hook 先跑 `check-secrets.sh`，再跑 `gitleaks git --staged`（v8.19 以後的寫法，不用已棄用的 `protect --staged`），只檢查這次要 commit 的檔案。開發機沒安裝 gitleaks，或版本和 repo 指定的不同時，hook 直接失敗並提示安裝方式。
+  - CI 掃描**完整的 git 歷史**（repo 是公開的），`actions/checkout` 要設 `fetch-depth: 0`。CI 直接下載指定版本的 gitleaks 程式，並用 commit 進 repo 的 SHA-256 檢查碼驗證，不用官方 GitHub Action。
+  - 版本寫在 `.gitleaks-version`。兩邊共用同一份 `.gitleaks.toml`，裡面必須有 `[extend] useDefault = true`，否則自訂設定會取代內建規則，只剩排除清單。
+- CI 的 job 名稱（包括 `check-secrets` 和 `gitleaks` 兩個 job）和 npm script 名稱（`typecheck`、`test:unit`）在設計文件裡固定，分支保護才能指定必要檢查。
 
 ## Goals vs. Non-Goals
 
 * **In-Scope Goals:**
   - 用 Google OIDC 登入（只申請 `openid email`），只有環境變數名單上的 Email 能登入；登入後以 `google_sub` 識別使用者。
-  - 使用者可以新增、修改自己的車輛。車種：自用小客車、一般燃油機車、大型重型機車、電動機車。欄位：車牌、廠牌、型號、暱稱、顏色、車種、排氣量級距（汽車、一般燃油機車、大型重型機車必填，電動機車不填）、出廠日期（完整日期）、原發照日期。
+  - 使用者可以新增、修改自己的車輛。車種：自用小客車、一般燃油機車、大型重型機車、電動機車。欄位：車牌、廠牌、型號、暱稱、顏色、車種、排氣量級距（汽車、一般燃油機車、大型重型機車必填，電動機車不填）、出廠日期（完整日期）、原發照日期、行照指定檢驗日期（選填，只限汽車和大型重機）。每人最多 50 台（含垃圾桶）。
   - 刪除時先丟進垃圾桶，可以還原或永久刪除；車牌在同一使用者底下唯一（含垃圾桶），重複時提示去垃圾桶還原。
   - 依程式裡的台灣法規規則，在讀取時算出每種適用檢驗的下一個期間（期間起日、最後期限），不存進資料庫。
   - 列表可依出廠日或最後期限排序；進入檢驗期間時日期變色；每個狀態都有文字標籤。
@@ -267,9 +274,9 @@
   - 介面只有繁體中文；第一版用 Docker Compose 部署在本機（測試環境），手動執行部署腳本；VPS 部署延後。
   - **成功標準：** GitHub Actions CI 中以下測試全部通過：
     1. 規則計算的單元測試，每個案例的名稱附上法規條號和修正日期，包含有填行照指定檢驗日期時以它為準並往後推、兩者不一致時寫 log，以及邊界日期（剛好滿 5 年和 10 年、2/29 發照、月底加 6 個月）、出廠和發照相隔約 1–4 年的第一次定檢、排氣定檢以月份計算（含 1 月和 12 月跨年）、10 年切換前後、`estimated` 旗標、大型重機同時回傳兩種檢驗、電動機車排氣定檢為免檢、`CAR_ELECTRIC` 的汽車仍有定期檢驗。
-    2. API + 真實 PostgreSQL 的整合測試（`WebApplicationFactory` + Testcontainers），包含 migration 能套用、名單檢查服務（含移出名單後立即失效）、CSRF、`/api` 未登入回傳 401（不轉址）、同時第一次登入不會建立兩筆使用者、`VEHICLE_MODIFIED`、`BRACKET_TYPE_MISMATCH`、`VEHICLE_LIMIT_REACHED`。forwarded headers 的測試延後到 VPS 部署時。
+    2. API + 真實 PostgreSQL 的整合測試（`WebApplicationFactory` + Testcontainers），包含 migration 能套用、名單檢查服務（含移出名單後立即失效）、CSRF、`/api` 未登入回傳 401（不轉址）、同時第一次登入不會建立兩筆使用者、`VEHICLE_MODIFIED`、`BRACKET_TYPE_MISMATCH`、`VEHICLE_LIMIT_REACHED`、`LICENCE_DATE_NOT_ALLOWED`、`LICENCE_DATE_BEFORE_ISSUE`、登出的 CSRF 檢查。forwarded headers 的測試延後到 VPS 部署時。
     3. 使用者資料隔離測試，涵蓋所有垃圾桶端點和個人設定端點。
-    4. 民國／西元換算和日期下拉選單邏輯的 Vitest 單元測試（年份標籤換算、每月天數含閏年 2/29、不提供未來年份、已存的舊日期年份會出現在選單）。
+    4. 民國／西元換算和日期下拉選單邏輯的 Vitest 單元測試（年份標籤換算、每月天數含閏年 2/29、出廠和原發照日期不提供未來年份、行照指定檢驗日期可選到今年 + 2 年、已存的舊日期年份會出現在選單）。
 * **Out-of-Scope Non-Goals:**
   - Email、LINE、推播通知，以及任何應用程式內的背景排程。
   - 管理頁面、角色與權限、在畫面上編輯規則；規則存資料庫。
@@ -315,6 +322,17 @@
 - **JWT 存在 localStorage、SPA 自己處理 PKCE** — 審查者建議否決：token 會暴露在 XSS 風險下。
 - **ASP.NET Identity、Keycloak、Auth0、Duende BFF** — 審查者建議否決：只用 Google 登入、沒有角色時太重。
 - **拍行照用 OCR 辨識** — 審查者建議否決：範圍太大、個資更多。
+- **自己寫 CSRF 檢查的 middleware** — 作者否決（接受第四輪審查建議）：改用框架內建的 `IAntiforgery`，效果相同、少寫程式。
+- **本機 `deploy.sh` 先執行 `git pull`** — 作者否決（接受第四輪審查建議）：本機就是開發機，`git pull` 可能蓋掉進行中的修改。
+- **第一版不加 gitleaks** — 作者否決：`check-secrets.sh` 抓不到被直接寫進設定檔或程式的密鑰，repo 是公開的。
+- **三把獨立金鑰放在 `.env`** — 作者否決：改用一把 `MASTER_KEY` 以 HKDF 推導，每個環境只要管理和備份一把。
+- **Data Protection 金鑰用 `.pfx` 憑證加密** — 作者否決：要多管理一個憑證檔案；改用從 `MASTER_KEY` 推導的 AES 金鑰。
+- **Data Protection 金鑰不加密，直接存在 PostgreSQL** — 作者否決：拿到資料庫備份的人就能偽造登入 cookie。
+- **Email 和 Data Protection 金鑰的加密延到部署 VPS 時再做** — 作者否決：等 VPS 有真實資料後再補，需要資料遷移和重新測試。
+- **Caddy 反向代理（只在 VPS 啟用）** — 作者否決：VPS 實際是 k3s（內建 Traefik），第一版只在本機部署，不需要反向代理。
+- **排氣量改成選填** — 作者否決：維持必填，接受驗證、check constraint、級距 API 和日後資料遷移的成本。
+- **不設每人車輛數上限** — 作者否決：設 50 台（含垃圾桶），確保記憶體排序的列表維持很快。
+- **推算的期間不變色、不參與排序** — 作者否決：照樣變色和排序，文件註明「只會提早」的原則不適用於推算項目。
 - **不做同時編輯檢查（最後寫入為準）** — 作者否決：第一版要用 `xmin` 檢查，不一致時擋下並提示「資料已被修改，請重新整理」（見第 5 節）。
 
 ## Key Decisions & Staging for Next Steps
@@ -325,19 +343,22 @@
 - **架構：** ASP.NET Core Web API + Vue SPA + PostgreSQL，Docker Compose；同網域 cookie 登入。
 - **規則：** 寫在獨立的 C# 規則引擎 library 裡；車齡從完整出廠日期算（暫定，待真實行照比對）；汽車和大型重機的定期檢驗以原發照日（月日）為基準、前後一個月；機車排氣定檢以原發照月份為基準、前後一個月（以月計）；滿 10 年後的第二次期間以 + 6 個月推算並標示；不做假日順延；讀取時即時計算。
 - **日期：** 出廠存完整日期；時間點用 UTC `timestamptz`；日曆日期用 `date`；「今天」用台北時間；民國／西元是存在資料庫的個人設定，預設民國。
-- **車輛：** 新增、修改、垃圾桶（還原、永久刪除，不自動清空）；車牌含垃圾桶唯一。
+- **車輛：** 新增、修改、垃圾桶（還原、永久刪除，不自動清空）；車牌含垃圾桶唯一；每人最多 50 台（含垃圾桶）；汽車和大型重機可選填行照指定檢驗日期，有填時以它為準。
 - **排氣量與大型重機：** 大型重型機車納入第一版，是獨立車種，級距要和車種相符。汽車必填（牌照稅級距 + 「電動」選項）；燃油機車和大型重機必填（級距對齊驗車門檻）；電動機車不填。
-- **狀態顯示：** 只有進入檢驗期間才變色；驗車日期旁加免責聲明。
+- **狀態顯示：** 只有進入檢驗期間才變色；免責聲明在列表上方和車輛詳細頁各顯示一次；推算日期和依行照日期的標示顯示在該項目旁。
 - **產品定位：** 「個人車輛管理系統」，驗車是第一個功能，之後加保養、加油紀錄；第一版範圍不變。
 - **登入：** Google 登入 + 環境變數 Email 名單，每次請求都重新檢查名單；名單和密鑰放在不進 git 的 `.env`。
 - **部署：** 第一版只在本機 Docker（測試環境），手動執行 `deploy.sh`；VPS（k3s）部署和分支安排延後。
-- **CI：** GitHub Actions 只跑測試，雲端 runner、無 secrets。
+- **CI：** GitHub Actions 跑測試和密鑰檢查（`check-secrets.sh`、gitleaks），不部署；雲端 runner、無 secrets。
 
-**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，金鑰由 `.env` 的 `MASTER_KEY` 推導；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `pg_dump` → `docker compose up -d --build`（本機不執行 `git pull`）；第一版只在本機 Docker 部署，不用 Caddy，VPS（k3s）部署延後；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點；用 `AddOpenIdConnect` 接 Google（為了取得 `email_verified`：名單用 Email 比對，必須確認 Google 已驗證該帳號擁有這個信箱，否則可用未驗證的他人信箱註冊 Google 帳號冒用）；只申請 `openid email`，不申請 `profile`（畫面只顯示 Email）；Data Protection 金鑰存 PostgreSQL，並用從 `MASTER_KEY` 推導的金鑰加密：自行實作 `IXmlEncryptor` / `IXmlDecryptor`（AES-GCM），和 Email 加密共用同一個 AES-GCM 工具類別；金鑰缺少或格式不對時服務啟動失敗；測試涵蓋加解密往返、用錯金鑰解密失敗、資料庫裡存的不是明文。金鑰遺失時所有人需重新登入，資料不受影響。不採用憑證（`.pfx`）方式，以免多管理一個檔案；CSRF 用 `XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header，以內建 `IAntiforgery` 檢查所有非 GET 的 `/api` 請求，並測試沒帶 header 的請求會被拒絕；migration 只增不改，從第一次部署到正式 VPS 開始適用；之前只有本機測試資料時可以自由修改、清空重建；規則引擎輸出檢驗項目清單，只列該車種有的檢驗（汽車只有定期檢驗、燃油機車只有排氣定檢、大型重機兩者都有、電動機車列排氣定檢並標免檢）；級距清單只在規則引擎定義一份，前端透過需登入的 `GET /api/reference/displacement-brackets` 取得；規則的期間算法用 C# 型別或 enum 表示（以發照月日、以發照月份、每年兩次加 6 個月推算、免檢），打錯字在編譯時就失敗；CI 也建置前端（`npm ci && npm run build`、型別檢查、Vitest 換算測試），並在 `.env` 被 git 追蹤時失敗；另加本機 pre-commit hook：hook 腳本放在 repo 的 `.githooks/`，每次 clone 後執行一次 `git config core.hooksPath .githooks` 啟用，commit 前執行和 CI 相同的 `scripts/check-secrets.sh`（擋下 `.env`，以及特定檔案類型裡 RFC 2606 保留網域以外的 Email）；`.gitignore` 從第一個 commit 就包含 `.env`。已知限制：hook 可用 `--no-verify` 略過，CI 檢查只能事後發現，一旦外洩 `MASTER_KEY` 要更換。
+**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，金鑰由 `.env` 的 `MASTER_KEY` 推導；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `pg_dump` → `docker compose up -d --build`（本機不執行 `git pull`）；第一版只在本機 Docker 部署，不用 Caddy，VPS（k3s）部署延後；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點；用 `AddOpenIdConnect` 接 Google（為了取得 `email_verified`：名單用 Email 比對，必須確認 Google 已驗證該帳號擁有這個信箱，否則可用未驗證的他人信箱註冊 Google 帳號冒用）；只申請 `openid email`，不申請 `profile`（畫面只顯示 Email）；Data Protection 金鑰存 PostgreSQL，並用從 `MASTER_KEY` 推導的金鑰加密：自行實作 `IXmlEncryptor` / `IXmlDecryptor`（AES-GCM），和 Email 加密共用同一個 AES-GCM 工具類別；金鑰缺少或格式不對時服務啟動失敗；測試涵蓋加解密往返、用錯金鑰解密失敗、資料庫裡存的不是明文。`MASTER_KEY` 遺失時：所有人被登出；資料庫裡的 Email 無法解密、也無法用 Email 查詢，要等每個使用者下次登入時重寫；車輛資料不受影響。所以 `MASTER_KEY` 要和資料庫備份分開備份。不採用憑證（`.pfx`）方式，以免多管理一個檔案；CSRF 用 `XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header，以內建 `IAntiforgery` 檢查所有非 GET 的 `/api` 請求，並測試沒帶 header 的請求會被拒絕；migration 只增不改，從第一次部署到正式 VPS 開始適用；之前只有本機測試資料時可以自由修改、清空重建；規則引擎輸出檢驗項目清單，只列該車種有的檢驗（汽車只有定期檢驗、燃油機車只有排氣定檢、大型重機兩者都有、電動機車列排氣定檢並標免檢）；級距清單只在規則引擎定義一份，前端透過需登入的 `GET /api/reference/displacement-brackets` 取得；規則的期間算法用 C# 型別或 enum 表示（以發照月日、以發照月份、每年兩次加 6 個月推算、免檢），打錯字在編譯時就失敗；CI 也建置前端（`npm ci && npm run build`、型別檢查、Vitest 換算測試），並在 `.env` 被 git 追蹤時失敗；另加本機 pre-commit hook：hook 腳本放在 repo 的 `.githooks/`，每次 clone 後執行一次 `git config core.hooksPath .githooks` 啟用，commit 前執行和 CI 相同的 `scripts/check-secrets.sh`（擋下 `.env`，以及特定檔案類型裡 RFC 2606 保留網域以外的 Email），再執行 gitleaks；`.gitignore` 從第一個 commit 就包含 `.env`。已知限制：hook 可用 `--no-verify` 略過，CI 檢查只能事後發現，一旦外洩 `MASTER_KEY` 要更換。
 
 **審查建議、本版已採用（作者沒有逐項確認，可以否決）：** 無（第 15 節已由作者整批接受）。
 
-**待作者決定：** 無。第四輪提出的 7 題都已決定：加選填的行照指定檢驗日期；第一版就做加密；一把 `MASTER_KEY`；推算項目照樣變色排序並註明例外；排氣量維持必填；每人上限 50 台含垃圾桶；第 15 節整批接受。
+**待作者決定（一致性檢查提出，一次一題）：**
+
+1. **換金鑰的範圍：** 第一版要不要支援「換 `MASTER_KEY`」（舊金鑰 `MASTER_KEY_PREVIOUS` 備援解密、重寫 Email 欄位與查詢雜湊、一次性的重新加密指令、清掉舊的 Data Protection 金鑰），還是延到部署 VPS 時？本機只有測試資料，換金鑰可以直接清空資料庫重建。
+2. **審查者建議否決、作者沒有表態的替代方案：** `AddGoogle`、JWT 存在 localStorage、ASP.NET Identity／Keycloak／Auth0／Duende BFF、拍行照 OCR。要以「作者否決（接受審查建議）」記錄，還是要重新考慮其中哪一項？
 
 **延後決定（有觸發條件）：**
 
