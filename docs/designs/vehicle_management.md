@@ -92,8 +92,8 @@
 ### C. 本文件後續章節要由作者決定的事項
 
 *   **C1（作者已決定，2026-11-19）** 後端分成四個專案：Domain、Application、Infrastructure、Web，依賴方向由專案參考強制（每層放什麼在技術計畫寫明）。Clean Architecture 本身只規定「依賴由外往內」，沒有規定要拆專案；拆成四個專案是為了讓編譯器強制這條規則。
-*   **C2（作者已決定，2026-11-19）** 寫入用 Repository、讀取用查詢服務：新增、修改、丟進垃圾桶、還原、永久刪除透過 Application 定義的 Repository 介面（車輛、使用者），讀取（車輛列表、單台車、垃圾桶列表、`/api/me`）透過 Application 定義的查詢介面直接回傳畫面需要的資料；兩者都由 Infrastructure 用 EF Core 實作。Application 專案不參考 EF Core。
-*   **C3（作者已決定，2026-11-19）** 使用案例用自己定義的 handler 介面組織：Application 定義 `ICommandHandler<TCommand>`、`IQueryHandler<TQuery, TResult>`，每個使用案例一個實作類別，用 ASP.NET Core 內建 DI 註冊，API 端點注入對應的 handler。不使用 MediatR 等外部套件；需要共同處理時用 decorator 實作。
+*   **C2（作者已決定，2026-11-19）** 寫入用 Repository、讀取用查詢服務：新增、修改、丟進垃圾桶、還原、永久刪除透過 Application 定義的 Repository 介面（車輛、使用者），讀取（車輛列表、單台車、垃圾桶列表）透過 Application 定義的查詢介面直接回傳畫面需要的資料；例外：使用者只有曆法偏好一個讀取欄位，`/api/me` 的讀取併入 `IUserRepository`，不另設查詢介面（審查第 5 階段 M4）；兩者都由 Infrastructure 用 EF Core 實作。Application 專案不參考 EF Core。
+*   **C3（作者已決定，2026-11-19）** 使用案例用自己定義的 handler 介面組織：Application 定義 `ICommandHandler<TCommand>`、`IQueryHandler<TQuery, TResult>`，每個使用案例一個實作類別，用 ASP.NET Core 內建 DI 註冊，API 端點注入對應的 handler。不使用 MediatR 等外部套件。第一版沒有 handler pipeline，也沒有共同處理（審查第 5 階段 M4：不預留 decorator 等擴充點）。
 *   **C4（作者已決定，2026-11-19）測試專案：** 兩個。`UnitTests` 放不需要資料庫的測試（Domain 規則引擎、Application handler、Infrastructure 的加密與車牌正規化）和架構測試；`IntegrationTests` 放 API + PostgreSQL（Testcontainers）的整合測試和資料隔離測試。已知取捨：架構測試沒辦法在 CI 上設成獨立的必要檢查。
 *   **C6（作者已決定，2026-11-19）** API 用 Controller，不用 Minimal API。
 *   **C7（2026-11-19）技術選擇：** .NET 10（EF Core 10 具名查詢過濾器需要）；前端 TypeScript + Vue Router（CI 要求 `typecheck`）。以下由作者決定：前端狀態管理用 Vue 內建 composable（不用 Pinia）；UI 元件庫用 Element Plus；後端測試框架用 xUnit；架構測試用 ArchUnitNET；結構化 log 用 .NET 內建的 JSON console logger（不用 Serilog）。
@@ -212,14 +212,14 @@
 - **handler 介面（作者決定 C3）：** `ICommandHandler<TCommand>`、`IQueryHandler<TQuery, TResult>`，每個使用案例一個實作類別。結果用統一的型別表示成功，或失敗並附錯誤代碼。
 - **命令（寫入，走 Repository，作者決定 C2）：** 新增車輛、修改車輛（帶版本號）、丟進垃圾桶、還原、永久刪除、修改曆法偏好、登入時建立或更新使用者。
 - **查詢（讀取，走查詢服務）：** 車輛列表（含排序）、單台車、垃圾桶列表、目前使用者（`/api/me`）、級距清單。車輛列表和單台車的查詢服務只負責取出資料；檢驗期間由 handler 呼叫 Domain 的規則引擎計算後再組成回應，所以查詢服務本身不需要知道規則。
-- **對外介面（由 Infrastructure 實作）：** `IVehicleRepository`、`IUserRepository`、`IVehicleQueries`、`IUserQueries`、`IEmailProtector`（加密 Email、算查詢雜湊）、`ICurrentUser`（目前登入者 ID）。時間一律透過 .NET 的 `TimeProvider` 取得，再換算成台北時間的日期。
+- **對外介面（由 Infrastructure 實作）：** `IVehicleRepository`、`IUserRepository`、`IVehicleQueries`、`IEmailProtector`（加密 Email、算查詢雜湊）、`ICurrentUser`（目前登入者 ID）。時間一律透過 .NET 的 `TimeProvider` 取得，再換算成台北時間的日期。
 - **名單檢查：** `LoginAdmission`（比對 `ALLOWED_EMAILS`、要求 `email_verified = true`），由 Web 的 OIDC 事件和 cookie 驗證事件共同呼叫。
 - **行照日期不一致的判斷：** 新增和修改車輛的 handler 讀取規則引擎回傳的診斷資訊，決定是否寫 `LICENCE_DATE_MISMATCH` log；讀取時不寫。
 
 **VehicleGo.Infrastructure（參考 Application、Domain）**
 - **資料庫：** EF Core + Npgsql 的 `AppDbContext`，兩個具名查詢過濾器（擁有者、已刪除）；`xmin` 當作同時編輯檢查的版本號；`(owner_id, normalized_plate)` 唯一索引；唯一索引衝突轉成 `PLATE_EXISTS_ACTIVE` 或 `PLATE_EXISTS_IN_TRASH`。
 - **垃圾桶自動清空（作者決定，審查第 5 階段 M3）：** 新增車輛和登入（建立或更新使用者）時，先永久刪除目前使用者 `deleted_at` 早於「現在 − 30 天」的車。「現在」由 `TimeProvider` 傳入，不用 SQL 的 `now()`，測試才能控制時間。讀取（垃圾桶列表、單台車、還原、永久刪除）時，已滿 30 天的車視為不存在，所以就算還沒被實際刪除，使用者也看不到或操作不到。GET 不做刪除，避免讀取有副作用。
-- **Repository 與查詢服務：** 實作 Application 的四個介面。垃圾桶相關查詢和車輛數量只關閉「已刪除」過濾器，不能關閉擁有者過濾器。
+- **Repository 與查詢服務：** 實作 Application 的三個介面（`IVehicleRepository`、`IUserRepository`、`IVehicleQueries`）。垃圾桶相關查詢和車輛數量只關閉「已刪除」過濾器，不能關閉擁有者過濾器。
 - **加密：** 從 `MASTER_KEY` 用 HKDF 推導三把金鑰；共用的 AES-GCM 工具；`IEmailProtector` 的實作。
 - **Data Protection：** 獨立的小 DbContext 存放登入金鑰，加上自行實作的 XML 加密器和解密器。
 - **migration：** EF Core migration，以 migration bundle 的形式在 Compose 的 `migrate` 服務執行。
@@ -825,9 +825,8 @@ Calculate(vehicle, today):
 | `VehicleGo.Application.csproj` | 只參考 Domain |
 | `Abstractions/ICommandHandler.cs`、`IQueryHandler.cs` | handler 介面（C3） |
 | `Abstractions/IVehicleRepository.cs` | `GetForOwnerAsync(id, includeTrashed)`、`CountForOwnerIncludingTrashAsync`、`PurgeExpiredTrashAsync(ownerId, cutoff)`、`AddAsync`、`SaveAsync(vehicle, expectedVersion?)`、`DeleteAsync` |
-| `Abstractions/IUserRepository.cs` | `UpsertOnLoginAsync(sub, emailEncrypted, emailHash)`、`GetAsync`、`SaveAsync` |
+| `Abstractions/IUserRepository.cs` | `UpsertOnLoginAsync(sub, emailEncrypted, emailHash)`、`GetAsync`、`GetCalendarPreferenceAsync`、`SaveAsync` |
 | `Abstractions/IVehicleQueries.cs` | 列出使用中的車、取單台、列出垃圾桶（都只限目前使用者） |
-| `Abstractions/IUserQueries.cs` | 取得曆法偏好 |
 | `Abstractions/ICurrentUser.cs` | 目前使用者 ID 和 cookie 裡的 Email |
 | `Abstractions/IEmailProtector.cs` | 加密 Email、計算查詢雜湊 |
 | `Abstractions/IAllowlistProvider.cs` | 取得名單 |
@@ -850,7 +849,7 @@ Calculate(vehicle, today):
 | `Persistence/Configurations/UserConfiguration.cs`、`VehicleConfiguration.cs` | 1.6 節的欄位、索引、check constraint 和名稱；`xmin` |
 | `Persistence/PostgresErrorMapper.cs` | 依 constraint 名稱把 23505 轉成 `PLATE_EXISTS_*`；`DbUpdateConcurrencyException` 轉成 `VEHICLE_MODIFIED` |
 | `Persistence/Repositories/VehicleRepository.cs`、`UserRepository.cs` | 實作 Repository；PUT 時把用戶端版本設成 `OriginalValue`；計數只關閉「deleted」過濾器 |
-| `Persistence/Queries/VehicleQueries.cs`、`UserQueries.cs` | 實作查詢服務（`AsNoTracking`） |
+| `Persistence/Queries/VehicleQueries.cs` | 實作查詢服務（`AsNoTracking`） |
 | `Persistence/Migrations/` | `AppDbContext` 的 EF Core migration（產生的檔案） |
 | `Crypto/MasterKey.cs` | 讀取並驗證 `MASTER_KEY`（Base64、32 bytes） |
 | `Crypto/KeyDerivation.cs` | HKDF-SHA256，salt 為空，info 為標籤 |
