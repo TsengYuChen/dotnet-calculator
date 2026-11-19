@@ -167,3 +167,162 @@
 *   **Given**：使用者已登入，曆法設定為民國。
 *   **When**：在設定頁改成西元。
 *   **Then**：所有頁面的日期顯示和輸入都改用西元。換一台裝置登入時，仍然是西元。
+
+## Technical Plan (Architecture)
+
+### 1. 整體架構
+
+後端採用 Clean Architecture，分成四個 .NET 專案，依賴只能由外往內，並由專案參考強制（作者決定 C1）。前端是獨立的 Vue SPA，建置後的靜態檔由 Web 專案提供，所以前後端在同一個網域。
+
+```text
+ 瀏覽器（Vue SPA）
+     │  HTTPS 以外的本機 http://localhost:<port>；同網域 cookie + XSRF header
+     ▼
+┌──────────────────────── VehicleGo.Web ────────────────────────┐
+│ Controllers、OIDC + Cookie 登入、名單檢查掛勾、CSRF、          │
+│ ProblemDetails、健康檢查、靜態檔與 SPA fallback、相依性組裝     │
+└───────────────┬───────────────────────────────┬───────────────┘
+                │ 呼叫 handler                    │ 只在組裝相依性時參考
+                ▼                                 ▼
+┌──── VehicleGo.Application ────┐   ┌──── VehicleGo.Infrastructure ────┐
+│ 命令／查詢 handler、           │◄──│ EF Core + PostgreSQL 實作         │
+│ Repository／查詢介面、         │實作│ Repository 與查詢服務、加密、     │
+│ 名單檢查、錯誤代碼             │   │ Data Protection 金鑰存放          │
+└───────────────┬───────────────┘   └──────────────┬───────────────────┘
+                ▼                                    │
+┌──────────── VehicleGo.Domain ────────────┐◄──────────┘
+│ 實體、車種與級距、車牌正規化、             │
+│ 驗車規則引擎（純函式）                     │
+└───────────────────────────────────────────┘
+                                         PostgreSQL（Docker Compose 的 db 服務）
+```
+
+### 2. 各層內容
+
+**VehicleGo.Domain（不參考任何其他專案或框架套件）**
+- **實體與值物件：** `Vehicle`（車牌、正規化車牌、廠牌、型號、暱稱、顏色、車種、排氣量級距、出廠日期、原發照日期、行照指定檢驗日期、刪除時間、擁有者 ID）、`User`。
+- **固定代碼：** 車種（`CAR`、`FUEL_MC`、`HEAVY_MC`、`ELECTRIC_MC`）、排氣量級距（汽車 11 級加上 `CAR_ELECTRIC`；機車 `MC_LE_50`、`MC_51_250`、`MC_251_550`、`MC_GT_550`）、曆法（`ROC`、`GREGORIAN`）。級距清單附法規出處，並定義「車種 → 可用級距」對照表。
+- **車牌正規化：** NFKC 全形轉半形、轉大寫、去掉空白和連字號。
+- **驗車規則引擎：** 純函式，輸入（車輛資料、今天的日期），輸出檢驗項目清單。每一項包含：種類、狀態、期間起日、最後期限、規則 ID、日期來源、是否推算，以及只給伺服器使用的診斷資訊。規則表和期間算法（以發照月日、以發照月份、以行照指定檢驗日期、每年兩次 + 6 個月推算、免檢）都在這裡，用型別或 enum 表示。
+- **領域規則：** 車輛上限 50、輸入驗證（日期先後、級距與車種相符、行照日期只限汽車和大型重機），回傳固定的錯誤代碼，不拋出框架例外。
+
+**VehicleGo.Application（只參考 Domain）**
+- **handler 介面（作者決定 C3）：** `ICommandHandler<TCommand>`、`IQueryHandler<TQuery, TResult>`，每個使用案例一個實作類別。結果用統一的型別表示成功，或失敗並附錯誤代碼。
+- **命令（寫入，走 Repository，作者決定 C2）：** 新增車輛、修改車輛（帶版本號）、丟進垃圾桶、還原、永久刪除、修改曆法偏好、登入時建立或更新使用者。
+- **查詢（讀取，走查詢服務）：** 車輛列表（含排序）、單台車、垃圾桶列表、目前使用者（`/api/me`）、級距清單。車輛列表和單台車的查詢服務只負責取出資料；檢驗期間由 handler 呼叫 Domain 的規則引擎計算後再組成回應，所以查詢服務本身不需要知道規則。
+- **對外介面（由 Infrastructure 實作）：** `IVehicleRepository`、`IUserRepository`、`IVehicleQueries`、`IUserQueries`、`IEmailProtector`（加密 Email、算查詢雜湊）、`ICurrentUser`（目前登入者 ID）。時間一律透過 .NET 的 `TimeProvider` 取得，再換算成台北時間的日期。
+- **名單檢查：** `LoginAdmission`（比對 `ALLOWED_EMAILS`、要求 `email_verified = true`），由 Web 的 OIDC 事件和 cookie 驗證事件共同呼叫。
+- **行照日期不一致的判斷：** 新增和修改車輛的 handler 讀取規則引擎回傳的診斷資訊，決定是否寫 `LICENCE_DATE_MISMATCH` log；讀取時不寫。
+
+**VehicleGo.Infrastructure（參考 Application、Domain）**
+- **資料庫：** EF Core + Npgsql 的 `AppDbContext`，兩個具名查詢過濾器（擁有者、已刪除）；`xmin` 當作同時編輯檢查的版本號；`(owner_id, normalized_plate)` 唯一索引；唯一索引衝突轉成 `PLATE_EXISTS_ACTIVE` 或 `PLATE_EXISTS_IN_TRASH`。
+- **Repository 與查詢服務：** 實作 Application 的四個介面。垃圾桶相關查詢和車輛數量只關閉「已刪除」過濾器，不能關閉擁有者過濾器。
+- **加密：** 從 `MASTER_KEY` 用 HKDF 推導三把金鑰；共用的 AES-GCM 工具；`IEmailProtector` 的實作。
+- **Data Protection：** 獨立的小 DbContext 存放登入金鑰，加上自行實作的 XML 加密器和解密器。
+- **migration：** EF Core migration，以 migration bundle 的形式在 Compose 的 `migrate` 服務執行。
+
+**VehicleGo.Web（參考 Application；組裝相依性時參考 Infrastructure）**
+- **Controllers（作者決定採用 Controller）：** `AuthController`（登入、登出）、`MeController`（讀取使用者、修改偏好）、`VehiclesController`（列表、單台、新增、修改、丟進垃圾桶、還原、永久刪除）、`TrashController`（垃圾桶列表）、`ReferenceController`（級距清單）。每個 action 只呼叫一個 handler，handler 用 `[FromServices]` 注入在 action 方法上，避免建構子變長。
+- **登入：** 預設的驗證方式是 cookie，Google 透過 OIDC 登入；`/api` 未登入時回傳 401，不轉址；cookie 驗證事件每次請求都重新檢查名單。
+- **CSRF：** 用框架內建的 `IAntiforgery`。先檢查登入，再檢查 CSRF。
+- **錯誤處理：** Application 回傳的錯誤代碼，在這一層統一轉成 ProblemDetails 和 HTTP 狀態碼。
+- **其他：** 健康檢查（`/health/live`、`/health/ready`）；提供 Vue 建置後的靜態檔，並把非 `/api` 的路徑導向 `index.html`；啟動時檢查 `MASTER_KEY`、Asia/Taipei 時區、`ALLOWED_EMAILS`；只在 `IntegrationTest` 環境註冊的測試用登入端點。
+
+**前端（`web/`，Vue SPA）**
+- **頁面：** 登入、此帳號尚未開放使用、車輛列表、新增與編輯車輛、垃圾桶、設定（曆法）。
+- **共用模組：**
+  - API 呼叫：自動帶 `X-XSRF-TOKEN`；收到 401 時導向登入頁；收到 `CSRF_INVALID` 時重新取得 token 後重試一次。
+  - 民國／西元換算和日期下拉選單的邏輯，獨立成一個模組，用 Vitest 測試。
+- 前端只依 API 回傳的 `status`、`basis`、`estimated` 決定顏色和標示，**不做任何驗車日期計算**。
+- 是否使用 TypeScript、狀態管理、UI 元件庫，在詳細實作計畫中由作者決定。
+
+### 3. 主要資料流
+
+**讀取車輛列表**
+```text
+SPA ── GET /api/vehicles?sort=deadline ──► VehiclesController
+  → ListVehiclesQueryHandler
+      → IVehicleQueries：取出目前使用者未刪除的車（擁有者 + 已刪除過濾器）
+      → TimeProvider：取得今天（台北時間）
+      → Domain 規則引擎：每台車算出檢驗項目清單
+      → 在記憶體依最早的最後期限排序（免檢和無法計算排最後，同日依車牌）
+  ← 200 車輛清單（含 inspections，不含診斷資訊）
+```
+
+**新增車輛**
+```text
+SPA ── POST /api/vehicles（帶 X-XSRF-TOKEN）──► 登入檢查 → CSRF 檢查 → VehiclesController
+  → CreateVehicleCommandHandler
+      → Domain 驗證（日期、級距與車種、行照日期）── 失敗 → 400 + 錯誤代碼
+      → IVehicleRepository：計算車輛數（含垃圾桶）≥ 50 → 409 VEHICLE_LIMIT_REACHED
+      → 建立 Vehicle（正規化車牌）、儲存
+          ── 唯一索引衝突 → 409 PLATE_EXISTS_ACTIVE / PLATE_EXISTS_IN_TRASH
+      → 規則引擎診斷：行照日期與公式不一致 → 寫 LICENCE_DATE_MISMATCH log
+  ← 201 新車輛（含 inspections、version）
+```
+
+**登入與每次請求的名單檢查**
+```text
+GET /api/auth/login?returnUrl=/ → OIDC Challenge → Google
+Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
+    ├─ 不通過 → 導向「此帳號尚未開放使用」（不建立使用者）
+    └─ 通過 → 建立或更新使用者（INSERT ... ON CONFLICT）、寫入登入 cookie（含 Email claim）
+之後每個請求 → cookie 驗證事件 → LoginAdmission（比對 cookie 裡的 Email）
+    └─ 已不在名單上 → 清除 cookie → 401
+```
+
+### 4. 資料模型（摘要，完整欄位在詳細實作計畫）
+
+| 資料表 | 主要欄位 | 說明 |
+| --- | --- | --- |
+| `users` | 內部 ID、`google_sub`（唯一）、`email_encrypted`、`email_lookup_hash`（一般索引）、`calendar_preference`（預設 `ROC`）、建立和修改時間 | Email 只用來處理人工刪除資料的請求 |
+| `vehicles` | 內部 ID、`owner_id`、`plate`、`normalized_plate`、廠牌、型號、暱稱、顏色、`vehicle_type`、`displacement_bracket`、`manufacture_date`、`original_issue_date`、`licence_inspection_date`、`deleted_at`、建立和修改時間、`xmin`（版本號） | `(owner_id, normalized_plate)` 唯一；check constraint 限制級距和行照日期只出現在對應的車種 |
+| `data_protection_keys` | 框架定義的欄位 | 存在獨立的 DbContext，內容已加密 |
+
+日曆日期（出廠、原發照、行照指定檢驗日期）用 `date`，時間點用 `timestamptz`。檢驗期間不存進資料庫。
+
+### 5. API 一覽（完整的請求、回應和錯誤代碼在詳細實作計畫）
+
+| 方法 | 路徑 | 用途 |
+| --- | --- | --- |
+| GET | `/api/auth/login?returnUrl=` | 開始 Google 登入 |
+| POST | `/api/auth/logout` | 登出（只登出 cookie，回傳 204） |
+| GET | `/api/me` | 目前使用者的 Email 和曆法設定；同時發出 XSRF token |
+| PATCH | `/api/me/preferences` | 修改曆法設定 |
+| GET | `/api/vehicles?sort=deadline\|manufactureDate` | 車輛列表（含檢驗項目） |
+| GET | `/api/vehicles/{id}` | 單台車（含檢驗項目和版本號） |
+| POST | `/api/vehicles` | 新增車輛 |
+| PUT | `/api/vehicles/{id}` | 修改車輛（整筆取代，需要版本號） |
+| POST | `/api/vehicles/{id}/trash` | 丟進垃圾桶 |
+| POST | `/api/vehicles/{id}/restore` | 從垃圾桶還原 |
+| DELETE | `/api/vehicles/{id}` | 永久刪除（只限垃圾桶裡的車） |
+| GET | `/api/trash` | 垃圾桶列表（不含檢驗項目） |
+| GET | `/api/reference/displacement-brackets` | 級距清單 |
+| GET | `/health/live`、`/health/ready` | 健康檢查（不需登入） |
+
+別人的車一律回傳 404。所有非 GET 的 `/api` 請求都要通過 CSRF 檢查。
+
+### 6. 安全與設定
+
+- 所有設定都從環境變數讀取，本機由 `.env` 提供：`ALLOWED_EMAILS`、Google Client ID 和 Secret、資料庫連線、`MASTER_KEY`。`.env` 不進 git，repo 裡只有 `.env.example`。
+- Email 和登入金鑰都用 `MASTER_KEY` 推導出的金鑰，以 AES-GCM 加密。第一版不支援更換金鑰；金鑰遺失時清空資料庫重建。
+- pre-commit hook 和 CI 都會執行 `check-secrets.sh` 和 gitleaks。
+- log 不寫車牌，Email 只寫查詢雜湊的前 8 碼。
+
+### 7. 部署（本機 Docker Compose）
+
+| 服務 | 說明 |
+| --- | --- |
+| `db` | PostgreSQL，用 `pg_isready` 做健康檢查 |
+| `migrate` | 執行 migration bundle，等 `db` 健康後才跑，`restart: "no"` |
+| `api` | Web 專案（含 Vue 靜態檔），等 `migrate` 成功後才啟動，`restart: unless-stopped` |
+
+部署腳本 `deploy.sh`：先 `pg_dump`（資料庫還沒啟動時跳過），再 `docker compose up -d --build`，並把 git SHA 傳進映像檔。
+
+### 8. 測試對應
+
+| 測試專案（作者決定 C4） | 內容 | 對應成功標準 |
+| --- | --- | --- |
+| `VehicleGo.UnitTests` | Domain 規則引擎、Application handler（用假的 Repository 和查詢服務）、Infrastructure 的加密、HKDF、車牌正規化；架構測試（檢查四個專案的依賴方向） | G9-1 |
+| `VehicleGo.IntegrationTests` | Web + PostgreSQL（Testcontainers）：登入名單、CSRF、錯誤代碼、同時編輯、車輛上限、資料隔離 | G9-2、G9-3 |
+| `web/`（Vitest） | 民國／西元換算、日期下拉選單 | G9-4 |
