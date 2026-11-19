@@ -92,7 +92,7 @@
 ### C. 本文件後續章節要由作者決定的事項
 
 *   **C1（作者已決定，2026-11-19）** 後端分成四個專案：Domain、Application、Infrastructure、Web，依賴方向由專案參考強制（每層放什麼在技術計畫寫明）。Clean Architecture 本身只規定「依賴由外往內」，沒有規定要拆專案；拆成四個專案是為了讓編譯器強制這條規則。
-*   **C2（詳細實作計畫）** 資料存取要不要在 EF Core 之上另外包一層 Repository。
+*   **C2（作者已決定，2026-11-19）** 寫入用 Repository、讀取用查詢服務：新增、修改、丟進垃圾桶、還原、永久刪除透過 Application 定義的 Repository 介面（車輛、使用者），讀取（車輛列表、單台車、垃圾桶列表、`/api/me`）透過 Application 定義的查詢介面直接回傳畫面需要的資料；兩者都由 Infrastructure 用 EF Core 實作。Application 專案不參考 EF Core。
 *   **C3（詳細實作計畫）** 使用案例要不要用 MediatR 之類的套件，還是寫成一般的服務類別。
 *   **C4（詳細實作計畫）** 測試專案怎麼切分、方案和資料夾怎麼命名。
 
