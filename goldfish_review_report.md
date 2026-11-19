@@ -1,5 +1,9 @@
 # Goldfish Annotated Review Report
 
+**Status:** resolved（2026-11-19）
+
+**作者決定：** 22 項接受並已套用到設計文件（X-B1、X-B2、X-M1 選 (b)、X-M2、X-M3、X-M4 選擇在車種選單加標籤並在免責聲明列出不支援的車種、X-M5–X-M14、X-N1、X-N5、X-N12、X-N13、X-N15、X-N16、X-N17）；1 項略過（X-N4：不加法規連結）；7 項 DECLINE 維持不修改（X-N2、X-N3、X-N6–X-N11、X-N14）。
+
 **Target:** `docs/designs/vehicle_management.md`（第 1–621 行，功能規格）
 **來源：** `critic_report.md`（第 7 階段第 1 輪，egm-design、egm-structural、egm-style）
 
