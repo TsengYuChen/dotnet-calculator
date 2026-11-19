@@ -1,5 +1,9 @@
 # 第 9 階段：Implementation Readiness 報告
 
+**Status:** resolved（2026-11-19）
+
+**作者決定（逐項確認）：** 22 個 Major 全部接受。其中 R-M4 選 (a)：新增 `IUnitOfWork`；R-M10 選 (b)：直接修改資料庫的 `deleted_at`；R-M14：三條法規的規則版本日期都由作者指定為 2026-01-01（不是條文實際修正日期，文件註明）。Nit 分四組（計算細節、API 和測試細節、建置與工具、文字）全部接受。已重寫詳細實作計畫，並同步修改功能規格（CUJ 10 的指令、技術計畫第 2–4 節、D-R1、OQ-1、G9-1、風險表）。
+
 *   **審查對象：** `docs/designs/vehicle_management.md` 第 725–1066 行（Detailed Implementation Plan）
 *   **審查者：** egm-implementation-readiness（implementation-readiness-standard）、egm-codebase-details（技術正確性；repo 沒有程式碼，不做重用搜尋）、egm-style
 *   **日期：** 2026-11-19

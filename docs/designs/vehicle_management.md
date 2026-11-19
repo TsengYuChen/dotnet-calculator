@@ -79,7 +79,7 @@
 *   **G7 資料保護：** 名單、Google Client Secret、資料庫密碼和 `MASTER_KEY` 都放在不進 git 的 `.env`。使用者的 Email 和 Data Protection 金鑰都以 `MASTER_KEY` 推導出的金鑰加密存放。pre-commit hook 和 CI 都會檢查有沒有密鑰被 commit 進 repo。
 *   **G8 部署：** 在本機用 Docker Compose 執行一支部署腳本完成部署。
 *   **G9 成功標準：** GitHub Actions CI 中以下四類測試全部通過：
-    1. **規則計算的單元測試。** 每個案例的名稱附上法規條號和修正日期，涵蓋 Technical Plan 第 3 節列出的每個邊界、每個 CUJ 的確切結果，以及各車種的組合。
+    1. **規則計算的單元測試。** 每個案例的名稱附上法規條號和規則版本日期，涵蓋 Technical Plan 第 3 節列出的每個邊界、每個 CUJ 的確切結果，以及各車種的組合。
     2. **API + 真實 PostgreSQL 的整合測試。** 涵蓋登入名單、CSRF、錯誤代碼、同時編輯、車輛上限、垃圾桶 30 天清除。
     3. **使用者資料隔離測試。** 使用者 A 不能讀寫使用者 B 的任何資料，包括車輛、垃圾桶和個人設定。
     4. **民國／西元換算和日期下拉選單的前端單元測試。**
@@ -105,7 +105,7 @@
 
 ### 法規規則
 
-*   **D-R1 定期檢驗：** 自用小客車和大型重型機車出廠未滿 5 年免驗；滿 5 年、未滿 10 年每年一次；滿 10 年起每年兩次；期限為指定檢驗日期前後一個月內。測試案例名稱要附上條號（道路交通安全規則第 44 條）和修正日期。
+*   **D-R1 定期檢驗：** 自用小客車和大型重型機車出廠未滿 5 年免驗；滿 5 年、未滿 10 年每年一次；滿 10 年起每年兩次；期限為指定檢驗日期前後一個月內。測試案例名稱要附上條號（道路交通安全規則第 44 條）和規則版本日期（作者指定為 2026-01-01，不是條文實際修正日期，見詳細實作計畫 1.2 節）。
 *   **D-R2 第一次指定檢驗日期：** 第一次指定檢驗日期 = 原發照日 +（依[間隔年數表](#3-日期計算規則)）年；車齡用完整出廠日期計算。例：CUJ 3 的車出廠 103/05/01、原發照 103/08/20，相隔未逾 1 年，+ 5 年，第一次指定檢驗日期為 108/08/20。作者決定直接採用，不另外用真實行照比對；如果日後發現和行照不一致，使用者可以填指定檢驗日期覆蓋，系統也會記 `LICENCE_DATE_MISMATCH` log 供修正規則。
 *   **D-R3 排氣定檢：** 燃油機車（白牌、黃牌、紅牌，二行程和四行程）出廠未滿 5 年免排氣定檢，滿 5 年起每年一次，檢驗期間為原發照月份前一個月 1 日到後一個月最後一天（以月計）；電動機車終身免排氣定檢。大型重機另外還有監理單位的定期檢驗，規則和自用小客車相同（D-R1）。
 *   **D-R4 汽車排氣量級距：** 照牌照稅級距：500cc 以下、501–600、601–1200、1201–1800、1801–2400、2401–3000、3001–4200、4201–5400、5401–6600、6601–7800、7801cc 以上，加上「電動」選項。機車級距見 Technical Plan 第 2 節的對照表。
@@ -129,7 +129,7 @@
 
 以下是延後決定的事項，各有觸發條件。
 
-*   **OQ-1 規則生效日與版本選擇：** 第一版只放現行規則。觸發：法規修正時，依當時的過渡條款決定用哪個日期判斷新舊規則（今天、原發照日或出廠日）。每條規則都記錄 `EffectiveFrom`（目前條文的修正日期），測試案例命名本來就需要這個日期，所以不算為之後的功能預先寫程式；`RuleTable.Current()` 只是取得全部規則的單一入口，不含過渡邏輯。
+*   **OQ-1 規則生效日與版本選擇：** 第一版只放現行規則。觸發：法規修正時，依當時的過渡條款決定用哪個日期判斷新舊規則（今天、原發照日或出廠日）。每條規則都記錄 `EffectiveFrom`（規則版本日期，作者指定為 2026-01-01），測試案例命名本來就需要這個日期，所以不算為之後的功能預先寫程式；`RuleTable.Current()` 只是取得全部規則的單一入口，不含過渡邏輯。
 *   **OQ-2 正式 VPS 部署（作者決定維持延後）：** 觸發：作者決定部署到正式 VPS 時。作者還沒確定會部署到正式機，這個系統可能只會是實驗專案。VPS 是 k3s，前面有 Cloudflare 代理和原點憑證；分支安排、反向代理與 forwarded headers、自動部署、正式備份排程、獨立的 migration 步驟（migration bundle）、更換金鑰的流程，都等真的決定部署時再處理，也可能永遠不做。
 
 ## Critical User Journeys (CUJs)
@@ -211,7 +211,7 @@
 ### CUJ 10：被移出名單
 
 *   **Given**：使用者已登入，正在使用系統。
-*   **When**：作者從 `.env` 的 `ALLOWED_EMAILS` 移除這位使用者的 Email，並執行 `docker compose up -d api` 重建容器。
+*   **When**：作者從 `.env` 的 `ALLOWED_EMAILS` 移除這位使用者的 Email，並執行 `./deploy.sh` 重建容器。
 *   **Then**：使用者的下一個請求收到 401，SPA 導向登入頁。再次登入時，看到「此帳號尚未開放使用」。
 
 ### CUJ 11：切換曆法
@@ -272,12 +272,12 @@ flowchart TD
 - **handler 介面（D-T3）：** `ICommandHandler<TCommand>`、`IQueryHandler<TQuery, TResult>`，每個使用案例一個實作類別。結果用統一的型別表示成功，或失敗並附錯誤代碼。
 - **命令（寫入，走 Repository，D-T2）：** 新增車輛、修改車輛（帶版本號）、丟進垃圾桶、還原、永久刪除、修改曆法偏好、登入時建立或更新使用者。
 - **查詢（讀取）：** 車輛列表（含排序）、單台車、垃圾桶列表走查詢服務；目前使用者（`/api/me`）走 `IUserRepository`（D-T2 的例外）；級距清單直接讀 Domain 的固定資料。車輛列表和單台車的查詢服務只負責取出資料；檢驗期間由 handler 呼叫 Domain 的規則引擎計算後再組成回應，所以查詢服務本身不需要知道規則。
-- **對外介面（由 Infrastructure 或 Web 實作）：** `IVehicleRepository`、`IUserRepository`、`IVehicleQueries`、`IEmailProtector`（加密 Email、算查詢雜湊）、`ICurrentUser`（目前登入者 ID，Web 從 cookie 讀取）。時間一律透過 .NET 的 `TimeProvider` 取得，再換算成台北時間的日期。
+- **對外介面（由 Infrastructure 或 Web 實作）：** `IVehicleRepository`、`IUserRepository`、`IVehicleQueries`、`IUnitOfWork`（在同一個資料庫交易裡執行多個步驟）、`IEmailProtector`（加密 Email、算查詢雜湊）、`ICurrentUser`（目前使用者 ID，Web 從 cookie 讀取）。時間一律透過 .NET 的 `TimeProvider` 取得，再換算成台北時間的日期。
 - **名單檢查：** `LoginAdmission`（比對 `ALLOWED_EMAILS`、要求 `email_verified = true`），由 Web 的 OIDC 事件和 cookie 驗證事件共同呼叫。
 - **指定檢驗日期不一致的判斷：** 新增和修改車輛的 handler 讀取規則引擎回傳的診斷資訊，決定是否寫 `LICENCE_DATE_MISMATCH` log；讀取時不寫。
 
 **VehicleGo.Infrastructure（參考 Application、Domain）**
-- **資料庫：** EF Core + Npgsql 的 `AppDbContext`，兩個具名查詢過濾器（擁有者、已刪除）；`xmin` 當作同時編輯檢查的版本號；`(owner_id, normalized_plate)` 唯一索引；唯一索引衝突轉成 `PLATE_EXISTS_ACTIVE` 或 `PLATE_EXISTS_IN_TRASH`。
+- **資料庫：** EF Core + Npgsql 的 `AppDbContext`，兩個具名查詢過濾器（擁有者、已刪除）；`xmin` 當作同時編輯檢查的版本號；`(owner_id, normalized_plate)` 唯一索引。車牌重複在寫入前先查詢判斷（使用中或垃圾桶），唯一索引只當同時寫入時的最後防線。
 - **垃圾桶自動清除（不需要背景排程）：** 新增和修改車輛時，先永久刪除目前使用者丟進垃圾桶滿 30 天的車，再檢查車牌唯一和 50 台上限；只有這兩件事需要真正刪除。其他查詢和操作都把滿 30 天的車視為不存在。
 - **Repository 與查詢服務：** 實作 Application 的三個介面（`IVehicleRepository`、`IUserRepository`、`IVehicleQueries`）。垃圾桶相關查詢和車輛數量只關閉「已刪除」過濾器，不能關閉擁有者過濾器。
 - **加密：** 從 `MASTER_KEY` 用 HKDF 推導三把金鑰：Email 加密（標籤 `email-enc/v1`）、Email 查詢雜湊（`email-hmac/v1`，`email_lookup_hash` = HMAC-SHA256(這把金鑰, 去空白並轉小寫的 Email)，用途是收到人工刪除請求時，用 Email 找出使用者）、Data Protection 金鑰加密（`dataprotection/v1`）；共用的 AES-GCM 工具；`IEmailProtector` 的實作。
@@ -305,7 +305,8 @@ flowchart TD
 - **週年日：** 一律從原發照日（或指定檢驗日期 L）直接加 N 年計算，不從前一年累加。2/29 發照的車，非閏年的週年日取 2/28，閏年仍是 2/29。
 - **排氣定檢從哪一年開始：** 最後期限在「出廠日 + 5 年」當天或之後的第一個檢驗期間就要驗。例：出廠 2019-03-10、3 月發照，「出廠日 + 5 年」是 2024-03-10，2024 年 2/1–4/30 這個檢驗期間的最後期限在它之後，所以要驗。
 - **推算期間：** 某個指定檢驗日期當天車齡已滿 10 年時，才產生推算期間：日期為該日 + 6 個月，檢驗期間是它的前後一個月。有填指定檢驗日期 L 時，也檢查 L − 1 年，所以會補上 L − 6 個月的推算期間（見 CUJ 4c）。
-- **不一致的判斷：** 填入的指定檢驗日期，月日和同年度公式算出的指定檢驗日期不同時，判定不一致；某個指定檢驗日期當天車齡已滿 10 年時，和公式日期 + 6 個月的月日相同，也算一致。
+- **車齡和間隔的比較：** 某日 X 車齡「滿 N 年」，就是 X 在出廠日 + N 年當天或之後；間隔年數表的「未逾 N 年」，就是原發照日在出廠日 + N 年當天或之前。
+- **不一致的判斷：** 填入的指定檢驗日期，月日和同年度公式算出的指定檢驗日期不同時，判定不一致；某個指定檢驗日期當天車齡已滿 10 年時，和公式日期 + 6 個月的月日相同，也算一致。填入的日期早於第一次公式日期時，改和第一次公式日期比對月日。
 - **間隔年數表（第一次指定檢驗日期，D-R2）：** 依出廠日到原發照日的間隔，原發照日加上：
 
     | 出廠到原發照的間隔 | 加幾年 |
@@ -334,13 +335,28 @@ SPA ── GET /api/vehicles?sort=deadline ──► VehiclesController
 SPA ── POST /api/vehicles（帶 X-XSRF-TOKEN）──► 登入檢查 → CSRF 檢查 → VehiclesController
   → CreateVehicleCommandHandler
       → Domain 驗證（日期、級距與車種、指定檢驗日期）── 失敗 → 400 + 錯誤代碼
-      → IVehicleRepository：先永久刪除自己滿 30 天的垃圾桶車輛
-      → 同一個交易：鎖住使用者，再計算車輛數（含垃圾桶）≥ 50 → 409 VEHICLE_LIMIT_REACHED
-        （同一使用者同時送出的新增會排隊執行，上限精確，不會變成 51 台）
-      → 建立 Vehicle（正規化車牌）、儲存
-          ── 唯一索引衝突 → 409 PLATE_EXISTS_ACTIVE / PLATE_EXISTS_IN_TRASH
+      → IUnitOfWork：以下在同一個交易裡執行
+          → 鎖住使用者（同一使用者同時送出的寫入會排隊執行）
+          → 永久刪除自己滿 30 天的垃圾桶車輛
+          → 查詢同一車牌 ── 使用中 → 409 PLATE_EXISTS_ACTIVE；垃圾桶 → 409 PLATE_EXISTS_IN_TRASH
+          → 計算車輛數（含垃圾桶）≥ 50 → 409 VEHICLE_LIMIT_REACHED（上限精確，不會變成 51 台）
+          → 建立 Vehicle（正規化車牌）、儲存
       → 規則引擎診斷：指定檢驗日期與公式不一致 → 寫 LICENCE_DATE_MISMATCH log
   ← 201 新車輛（含 inspections、version）
+```
+
+**修改車輛**
+```text
+SPA ── PUT /api/vehicles/{id}（帶 X-XSRF-TOKEN、version）──► 登入檢查 → CSRF 檢查 → VehiclesController
+  → UpdateVehicleCommandHandler
+      → Domain 驗證 ── 失敗 → 400 + 錯誤代碼
+      → IUnitOfWork：以下在同一個交易裡執行
+          → 鎖住使用者、永久刪除自己滿 30 天的垃圾桶車輛
+          → 取出車輛 ── 不存在 → 404 VEHICLE_NOT_FOUND；在垃圾桶 → 409 VEHICLE_IN_TRASH
+          → 查詢同一車牌（排除自己）── 409 PLATE_EXISTS_ACTIVE / PLATE_EXISTS_IN_TRASH
+          → 儲存 ── 版本號不一致 → 409 VEHICLE_MODIFIED
+      → 規則引擎診斷 → 寫 log
+  ← 200 車輛（含 inspections、新的 version）
 ```
 
 **登入與每次請求的名單檢查**
@@ -415,7 +431,7 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 
 | 風險 | 類別 | 影響 | 緩解方式 | 狀態 |
 | --- | --- | --- | --- | --- |
-| 規則和法規不一致（作者對法規的理解有誤） | 正確性 | 顯示錯誤的檢驗期間；測試的預期值和規則出自同一人的理解，測試抓不到 | 法規條號和修正日期寫進每個測試名稱，方便對照原文；免責聲明請使用者以正式通知為準；使用者可以填指定檢驗日期覆蓋 | 接受 |
+| 規則和法規不一致（作者對法規的理解有誤） | 正確性 | 顯示錯誤的檢驗期間；測試的預期值和規則出自同一人的理解，測試抓不到 | 法規條號和規則版本日期寫進每個測試名稱，方便對照原文；免責聲明請使用者以正式通知為準；使用者可以填指定檢驗日期覆蓋 | 接受 |
 | 規則實作算錯日期 | 正確性 | 顯示錯誤的檢驗期間 | G9-1 的單元測試涵蓋每條規則和第 3 節的每個邊界；CUJ 3、4、4b、4c、5、6、12 寫出確切結果 | 已緩解 |
 | 第一次指定檢驗日期公式（D-R2）和真實行照不一致 | 正確性 | 沒填指定檢驗日期的車，顯示的日期可能不對 | 使用者填指定檢驗日期覆蓋；新增、修改時寫 `LICENCE_DATE_MISMATCH` log 供修正規則 | 接受 |
 | 推算期間比實際晚 | 正確性 | 使用者可能錯過第二次檢驗 | 推算標示；免責聲明說明可能比實際早或晚；考慮過必填指定檢驗日期（ALT-C12），作者否決 | 接受 |
@@ -428,6 +444,7 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 | 列表在記憶體排序、不分頁 | 規模 | 車輛很多時列表變慢 | 每人上限 50 台（G2） | 已緩解 |
 | `api` 啟動時套用 migration 失敗 | 維運 | `api` 無法啟動 | 第一版：清空資料庫重建後重新部署；VPS 改用獨立的 migration 步驟（OQ-2） | 接受 |
 | Google OIDC 故障，或 redirect URI 設錯 | 可用性 | 沒有人能登入 | 沒有替代登入方式；README 寫明 redirect URI 設定 | 接受 |
+| 用區網 IP 的 http 連線 | 可用性 | OIDC 的 cookie 需要 `localhost` 或 HTTPS，瀏覽器會拒絕，無法登入 | README 註明只能用 `localhost` 連線；正式部署時改用 HTTPS（OQ-2） | 接受 |
 | 密鑰被 commit 進公開 repo | 安全 | 名單、Google Client Secret 或 `MASTER_KEY` 外洩 | `.gitignore` 第一個 commit 就排除 `.env`；pre-commit hook 和 CI 都執行 `check-secrets.sh` 和 gitleaks（CI 掃完整歷史） | 已緩解 |
 
 ## Alternatives Considered
@@ -726,13 +743,15 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 
 ### 0. 實作順序
 
-1. Repo 基礎設定（版本固定、`.gitignore`、密鑰檢查、hook）
-2. Domain（規則引擎 + 單元測試）——先讓成功標準 1 通過
-3. Application（handler + 單元測試）
-4. Infrastructure（EF Core、加密、Data Protection、migration）
-5. Web（登入、CSRF、Controllers、錯誤處理）+ 整合測試
-6. 前端（Vue）+ Vitest
-7. Docker Compose、`deploy.sh`、CI
+每一步結束時，方案都要能建置，CI 都要通過。
+
+1. **Repo 基礎設定：** 版本固定（`global.json`、`.nvmrc`、`.config/dotnet-tools.json`）、`.gitignore`、`.editorconfig`、`Directory.*.props`、密鑰檢查與 hook、`VehicleGo.slnx`（只含 `VehicleGo.Domain` 和 `VehicleGo.UnitTests`）、最小的 CI（`backend` 只建置和跑 `UnitTests`；`check-secrets`；`gitleaks`）。
+2. **Domain：** 規則引擎和單元測試，先讓 G9-1 通過。
+3. **Application：** 新增 `VehicleGo.Application` 專案，`UnitTests` 加參考；handler 和單元測試。
+4. **Infrastructure：** 新增 `VehicleGo.Infrastructure` 專案，`UnitTests` 加參考；EF Core、加密、Data Protection、design-time factory、migration。
+5. **Web：** 新增 `VehicleGo.Web` 和 `VehicleGo.IntegrationTests` 專案；登入、CSRF、Controllers、錯誤處理和整合測試；CI 的 `backend` 加跑 `IntegrationTests`。
+6. **前端：** Vue 和 Vitest；CI 加 `frontend` job。
+7. **部署：** `Dockerfile`、`docker-compose.yml`、`deploy.sh`、README。
 
 ### 1. 共用合約
 
@@ -744,24 +763,44 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 | 汽車級距 | `CAR_LE_500`、`CAR_501_600`、`CAR_601_1200`、`CAR_1201_1800`、`CAR_1801_2400`、`CAR_2401_3000`、`CAR_3001_4200`、`CAR_4201_5400`、`CAR_5401_6600`、`CAR_6601_7800`、`CAR_GT_7800`、`CAR_ELECTRIC` |
 | 機車級距 | `FUEL_MC`：`MC_LE_50`、`MC_51_250`；`HEAVY_MC`：`MC_251_550`、`MC_GT_550`；`ELECTRIC_MC`：無（null） |
 | 檢驗種類 `kind` | `PERIODIC`（定期檢驗）、`EXHAUST`（排氣定檢） |
-| 狀態 `status` | `EXEMPT`、`UPCOMING`、`IN_WINDOW`、`UNCOMPUTABLE` |
-| 日期來源 `basis` | `FORMULA`、`LICENCE` |
+| 狀態 `status` | `EXEMPT`（免檢）、`UPCOMING`（下次檢驗期間）、`IN_WINDOW`（檢驗期間內）、`UNCOMPUTABLE`（無法計算）；畫面文字見 G5 |
+| 日期來源 `basis` | `FORMULA`（公式推算）、`LICENCE`（行照指定檢驗日期） |
 | 曆法 | `ROC`、`GREGORIAN` |
 | 排序 `sort` | `deadline`（預設）、`manufactureDate` |
+
+**三邊的表示方式：**
+*   **C#：** enum（例如 `VehicleType.HeavyMc`）。
+*   **JSON：** `JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper)`，序列化成 `HEAVY_MC`。不認得的代碼值會讓 JSON 解析失敗，回 `VALIDATION_FAILED`（見 1.4 節）。
+*   **資料庫：** `HasConversion<string>` 加同一個命名規則，存成 `HEAVY_MC` 這樣的字串。
 
 #### 1.2 規則 ID 與規則表
 
 | 車種 | 種類 | 規則 ID | 內容 |
 | --- | --- | --- | --- |
-| `CAR` | `PERIODIC` | `RTS44-CAR-AGE0TO5` | 今天距出廠未滿 5 年：顯示第一次定期檢驗的檢驗期間（狀態依今天判斷，第一個檢驗期間可能在滿 5 年前一個月內就開始，這時是 `IN_WINDOW`） |
-| `CAR` | `PERIODIC` | `RTS44-CAR-AGE5TO10` | 今天滿 5 年、未滿 10 年：每年一次，指定日期前後一個月（以日計） |
-| `CAR` | `PERIODIC` | `RTS44-CAR-AGE10UP` | 今天滿 10 年：每年兩次，指定日期 + 6 個月推算（`estimated: true`） |
-| `CAR` | `PERIODIC` | `RTS44-CAR-LICENCE` | 有填指定檢驗日期時一律用這個規則 ID（選規則 ID 時不看車齡）；指定檢驗日期當天車齡已滿 10 年時仍會加上推算期間（`basis: LICENCE`、`estimated: true`，畫面顯示推算標示），也會補上 L − 6 個月的推算期間（見 1.3 節） |
+| `CAR` | `PERIODIC` | `RTS44-CAR-AGE0TO5` | 今天距出廠未滿 5 年：顯示第一次定期檢驗的檢驗期間。這個檢驗期間可能在滿 5 年前一個月就開始，這時狀態為 `IN_WINDOW` |
+| `CAR` | `PERIODIC` | `RTS44-CAR-AGE5TO10` | 今天滿 5 年、未滿 10 年：每年一次，檢驗期間為指定檢驗日期前後一個月（以日計） |
+| `CAR` | `PERIODIC` | `RTS44-CAR-AGE10UP` | 今天滿 10 年：每年兩次，其中指定檢驗日期 + 6 個月的那一次為推算期間（`estimated: true`） |
+| `CAR` | `PERIODIC` | `RTS44-CAR-LICENCE` | 有填指定檢驗日期時使用（選規則 ID 時不看車齡）；推算期間見 1.3 節 |
 | `HEAVY_MC` | `PERIODIC` | `RTS44-HMC-AGE0TO5`、`RTS44-HMC-AGE5TO10`、`RTS44-HMC-AGE10UP`、`RTS44-HMC-LICENCE` | 同汽車 |
 | `FUEL_MC`、`HEAVY_MC` | `EXHAUST` | `APC40-MC-AGE0TO5`、`APC40-MC-ANNUAL` | 今天距出廠未滿 5 年用 `AGE0TO5`，顯示第一個檢驗期間；滿 5 年起用 `ANNUAL`，每年一次，原發照月份前一個月 1 日到後一個月最後一天（以月計） |
 | `ELECTRIC_MC` | `EXHAUST` | `APC40-EMC-EXEMPT` | 免檢 |
 
-每條規則附法規出處（法規名稱、條號、修正日期），並有 `EffectiveFrom` 欄位（填目前條文的修正日期）。規則引擎透過 `RuleTable.Current()` 取得現行規則，第一版這個函式永遠回傳全部規則，不寫任何過渡邏輯；日後法規修改時，只要新增規則並調整這個函式（OQ-1）。**規則 ID 的選法（作者決定）：** 有填指定檢驗日期時用 `LICENCE`；否則依**今天**距出廠日的車齡選 `AGE0TO5`／`AGE5TO10`／`AGE10UP`（排氣定檢為 `AGE0TO5`／`ANNUAL`）。狀態一律依「今天是否在顯示的期間內」判斷，和規則 ID 無關。已知限制：車齡接近 10 年時，顯示的檢驗期間可能已經是滿 10 年後的推算期間，但規則 ID 仍是 `AGE5TO10`；這只影響規則 ID 的標示，日期本身不受影響。`RTS44` = 道路交通安全規則第 44 條；`APC40` = 空氣污染防制法第 40 條。
+**法規出處與規則版本日期：**
+
+| 法規 | 條號 | 規則版本日期 | 對應規則 ID |
+| --- | --- | --- | --- |
+| 道路交通安全規則 | 第 44 條 | 2026-01-01（民國 115/01/01） | `RTS44-*` |
+| 空氣污染防制法 | 第 40 條 | 2026-01-01（民國 115/01/01） | `APC40-*` |
+| 使用牌照稅法 | 汽車排氣量級距 | 2026-01-01（民國 115/01/01） | 汽車級距（`CAR_*`） |
+
+規則版本日期由作者指定為 2026-01-01，**不是條文實際的修正日期**；每條規則的 `EffectiveFrom` 和測試案例名稱都用這個日期。
+
+**規則表的其他說明：**
+*   **`RuleTable.Current()`：** 第一版回傳全部規則，不含過渡邏輯；日後法規修改時，新增規則並調整這個函式（OQ-1）。
+*   **規則 ID 的選法（作者決定）：** 有填指定檢驗日期時用 `*-LICENCE`；否則依**今天**距出廠日的車齡選 `AGE0TO5`／`AGE5TO10`／`AGE10UP`（排氣定檢為 `AGE0TO5`／`ANNUAL`）。
+*   **狀態：** 只依「今天是否在顯示的檢驗期間內」判斷，和規則 ID 無關。
+*   **已知限制：** 車齡接近 10 年時，顯示的檢驗期間可能已經是滿 10 年後的推算期間，但規則 ID 仍是 `AGE5TO10`；這只影響規則 ID 的標示，日期本身不受影響。
+*   **縮寫：** `RTS44` = 道路交通安全規則第 44 條；`APC40` = 空氣污染防制法第 40 條。
 
 #### 1.3 規則引擎演算法（虛擬碼）
 
@@ -769,77 +808,122 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 Calculate(vehicle, today):
   kinds = { CAR: [PERIODIC], FUEL_MC: [EXHAUST], HEAVY_MC: [PERIODIC, EXHAUST], ELECTRIC_MC: [EXHAUST] }
   for kind in kinds[vehicle.type]:
-    if vehicle.type == ELECTRIC_MC: yield EXEMPT item (dates null, rule APC40-EMC-EXEMPT); continue
+    rule = RuleTable.Current().Find(vehicle.type, kind)
+    if rule == null: yield Uncomputable(kind, NO_RULE); continue
+    if InvalidInput(vehicle): yield Uncomputable(kind, INVALID_INPUT); continue
+
+    if vehicle.type == ELECTRIC_MC:
+      yield { kind, status: EXEMPT, earliestDate: null, deadline: null,
+              ruleId: APC40-EMC-EXEMPT, basis: FORMULA, estimated: false }
+      continue
+
     if kind == PERIODIC:
-      anchors = vehicle.licenceDate != null
-                ? Sequence(L-1y, L, L+1y, L+2y, ...)                   basis = LICENCE
-                  # L-1y 只用來產生推算期間，不產生它本身的檢驗期間
-                : Sequence(firstDate, firstDate+1y, firstDate+2y, ...) basis = FORMULA
-                  where firstDate = issueDate + addYears(manufactureDate, issueDate)y,
-                        addYears 見 Technical Plan 第 3 節的間隔年數表
-      # 每個 anchor 都從起點直接加 N 年（L.AddYears(n)、issueDate.AddYears(k + n)），不從前一個 anchor 累加
-      windows = for each anchor A:
-                  [A-1m, A+1m]（L-1y 除外）                            estimated = false
-                  if age(manufactureDate, A) >= 10y: [A+6m-1m, A+6m+1m] estimated = true   # A 當天已滿 10 年
+      if L != null:                                   # L = 指定檢驗日期
+        basis = LICENCE
+        anchors = L.AddYears(n), n = -1, 0, 1, 2, ...
+      else:
+        basis = FORMULA
+        gapYears = GapYears(manufactureDate, issueDate)
+        anchors = issueDate.AddYears(gapYears + n), n = 0, 1, 2, ...
+      # 每個 anchor 都從起點直接加 N 年，不從前一個 anchor 累加
+      windows = for each anchor A (第 n 個):
+        if n >= 0:
+          { earliestDate: A.AddMonths(-1), deadline: A.AddMonths(1), estimated: false }
+        if Age(manufactureDate, A) >= 10:
+          E = A.AddMonths(6)
+          { earliestDate: E.AddMonths(-1), deadline: E.AddMonths(1), estimated: true }
+
     if kind == EXHAUST:
-      windows = for each year Y from manufacture year:
-                  M = issueDate.month; window = [1st of (Y,M)-1m, last day of (Y,M)+1m]
-                take windows whose deadline >= manufactureDate + 5y
-    choose earliest window whose deadline >= today
-    status = today in [start, deadline] (含兩端) ? IN_WINDOW : UPCOMING
-    ruleId = basis == LICENCE ? *-LICENCE : 依 age(manufactureDate, today) 選 AGE0TO5 / AGE5TO10 / AGE10UP（排氣定檢：AGE0TO5 / ANNUAL）
-    if no window or invalid input → UNCOMPUTABLE（reason: NO_RULE 或 INVALID_INPUT）
-      # 正常情況下輸入驗證會擋掉錯誤資料，所以 UNCOMPUTABLE 只會在規則表有漏洞，或資料庫裡有舊資料不符合現行驗證時出現；
-    diagnostics（只給伺服器）: 有填 L 時，比對同年度公式日期的月日（滿 10 年時也比對 +6 個月），不一致 → mismatch = true、formulaDate
+      basis = FORMULA
+      M = issueDate.Month
+      windows = for Y = manufactureDate.Year, Y + 1, ...:
+        first = new DateOnly(Y, M, 1)
+        { earliestDate: first.AddMonths(-1), deadline: LastDayOfMonth(first.AddMonths(1)), estimated: false }
+      windows = windows.where(deadline >= manufactureDate.AddYears(5))
+
+    # windows 依 deadline 由早到晚產生，產生到第一個 deadline >= today 的檢驗期間就停止
+    w = windows 中第一個 deadline >= today 的檢驗期間
+    status = w.earliestDate <= today <= w.deadline ? IN_WINDOW : UPCOMING
+    ruleId = basis == LICENCE ? rule.LicenceRuleId : rule.RuleIdFor(Age(manufactureDate, today))
+    yield { kind, status, w.earliestDate, w.deadline, ruleId, basis, w.estimated }
+
+  diagnostics（只給伺服器）:
+    有填 L 時，判斷是否不一致（Technical Plan 第 3 節「不一致的判斷」），不一致 → mismatch = true、formulaDate
+
+Uncomputable(kind, reason) = { kind, status: UNCOMPUTABLE, earliestDate: null, deadline: null,
+                               ruleId: null, basis: FORMULA, estimated: false }，診斷記錄 reason
 ```
 
-月份加減一律用 `DateOnly.AddMonths` / `AddYears`（月底往前夾，2/29 在非閏年變 2/28），規則見 Technical Plan 第 3 節。**期間怎麼算以本節的虛擬碼為準；規則 ID 和法規出處以 1.2 節的規則表為準。**
+**輔助函式：**
+*   **`Age(m, X) >= N`：** 就是 `X >= m.AddYears(N)`。
+*   **`GapYears(m, issue)`：** 回傳要加的年數。找出最小的 N（1–4）使 `issue <= m.AddYears(N)`（「未逾 N 年」包含剛好 N 年），回傳 `6 − N`；都不符合時（逾 4 年）回傳 1。對照 Technical Plan 第 3 節的間隔年數表。
+*   **`InvalidInput(vehicle)`：** 引擎只檢查「沒有這些資料就算不出來」的條件：原發照日早於出廠日；不允許的車種有指定檢驗日期；級距和車種不符。和「今天」有關的驗證（未來日期、`LICENCE_DATE_TOO_FAR`）不在引擎裡做；資料庫裡的舊資料就算不符合現行驗證，只要算得出來就照常顯示。
+*   **`UNCOMPUTABLE` 以單一檢驗為單位：** 大型重機的一種檢驗算不出來時，另一種照常顯示。正常情況下輸入驗證會擋掉錯誤資料，所以 `UNCOMPUTABLE` 只會在規則表有漏洞，或資料庫裡有舊資料不符合現行驗證時出現。
+
+**月份加減：** 定期檢驗用 `DateOnly.AddMonths`／`AddYears`，落在不存在的日期時取該月最後一天（例如 2/29 在非閏年變 2/28），規則見 Technical Plan 第 3 節。排氣定檢以月計，最後期限一律是後一個月的最後一天，不套用這個規則。**檢驗期間怎麼算以本節的虛擬碼為準；規則 ID 和法規出處以 1.2 節的規則表為準。**
 
 #### 1.4 API 合約
 
-所有回應的日期一律是西元 `YYYY-MM-DD`；錯誤一律是 ProblemDetails（`type`、`title`、`status`、`traceId`，擴充欄位 `code`，必要時加 `trashedVehicleId`、`activeCount`、`trashCount`）。
+**格式：**
+*   日曆日期（出廠日、原發照日、指定檢驗日期、`earliestDate`、`deadline`）是西元 `YYYY-MM-DD`；時間點（`deletedAt`、`purgeAt`）是 ISO 8601 UTC，前端換算成台北時間的日期顯示。
+*   錯誤一律是 ProblemDetails：`type`、`title`、`status`、`traceId`，擴充欄位 `code`；必要時加 `trashedVehicleId`、`activeCount`、`trashCount`。`VALIDATION_FAILED` 另附 `errors: { 欄位名稱: [錯誤訊息] }`。
+*   框架自動產生的 400（模型驗證失敗、JSON 解析失敗，例如日期格式錯誤或不認得的代碼）由 `InvalidModelStateResponseFactory` 統一轉成 `VALIDATION_FAILED`。
+*   錯誤欄依 400 → 401 → 404 → 409 排序。
 
 | 方法與路徑 | 請求 | 成功 | 錯誤 |
 | --- | --- | --- | --- |
 | `GET /api/auth/login?returnUrl=` | — | 302 到 Google | `returnUrl` 不合法時改用 `/` |
-| `POST /api/auth/logout` | — | 204 | 401、400 `CSRF_INVALID` |
+| `POST /api/auth/logout` | — | 204 | 400 `CSRF_INVALID`、401 |
 | `GET /api/me` | — | 200 `{ email, calendar }`，並發出 `XSRF-TOKEN` cookie | 401 |
-| `PATCH /api/me/preferences` | `{ calendar }` | 200（同 `/api/me`） | 400 `INVALID_CALENDAR`、401、400 `CSRF_INVALID` |
-| `GET /api/vehicles?sort=` | — | 200 `[VehicleDto]` | 401 |
-| `GET /api/vehicles/{id}` | — | 200 `VehicleDto` | 404 `VEHICLE_NOT_FOUND`、401 |
-| `POST /api/vehicles` | `VehicleInput` | 201 `VehicleDto`（`Location` header） | 400 驗證錯誤、409 `PLATE_EXISTS_ACTIVE`／`PLATE_EXISTS_IN_TRASH`／`VEHICLE_LIMIT_REACHED`、401、400 `CSRF_INVALID` |
-| `PUT /api/vehicles/{id}` | `VehicleInput` + `version` | 200 `VehicleDto` | 400 驗證錯誤（沒帶 `version` 也屬於 `VALIDATION_FAILED`）、404、409 `VEHICLE_MODIFIED`／`VEHICLE_IN_TRASH`／`PLATE_EXISTS_*`、401、400 `CSRF_INVALID` |
-| `POST /api/vehicles/{id}/trash` | — | 204 | 404、409 `VEHICLE_IN_TRASH`、401、400 `CSRF_INVALID` |
-| `POST /api/vehicles/{id}/restore` | — | 204 | 404、409 `VEHICLE_NOT_IN_TRASH`、401、400 `CSRF_INVALID` |
-| `DELETE /api/vehicles/{id}` | — | 204 | 404、409 `VEHICLE_NOT_IN_TRASH`、401、400 `CSRF_INVALID` |
+| `PATCH /api/me/preferences` | `{ calendar }` | 200（同 `/api/me`） | 400 `INVALID_CALENDAR`、400 `CSRF_INVALID`、401 |
+| `GET /api/vehicles?sort=` | — | 200 `[VehicleDto]` | 400 `VALIDATION_FAILED`（不合法的 `sort`）、401 |
+| `GET /api/vehicles/{id}` | — | 200 `VehicleDto` | 401、404 `VEHICLE_NOT_FOUND`（包括垃圾桶裡的車） |
+| `POST /api/vehicles` | `VehicleInput` | 201 `VehicleDto`（`Location` header） | 400 驗證錯誤、400 `CSRF_INVALID`、401、409 `PLATE_EXISTS_ACTIVE`、409 `PLATE_EXISTS_IN_TRASH`、409 `VEHICLE_LIMIT_REACHED` |
+| `PUT /api/vehicles/{id}` | `UpdateVehicleRequest` | 200 `VehicleDto` | 400 驗證錯誤、400 `CSRF_INVALID`、401、404 `VEHICLE_NOT_FOUND`、409 `VEHICLE_IN_TRASH`、409 `VEHICLE_MODIFIED`、409 `PLATE_EXISTS_ACTIVE`、409 `PLATE_EXISTS_IN_TRASH` |
+| `POST /api/vehicles/{id}/trash` | — | 204 | 400 `CSRF_INVALID`、401、404 `VEHICLE_NOT_FOUND`、409 `VEHICLE_IN_TRASH` |
+| `POST /api/vehicles/{id}/restore` | — | 204 | 400 `CSRF_INVALID`、401、404 `VEHICLE_NOT_FOUND`、409 `VEHICLE_NOT_IN_TRASH` |
+| `DELETE /api/vehicles/{id}` | — | 204 | 400 `CSRF_INVALID`、401、404 `VEHICLE_NOT_FOUND`、409 `VEHICLE_NOT_IN_TRASH` |
 | `GET /api/trash` | — | 200 `[TrashItemDto]` | 401 |
 | `GET /api/reference/displacement-brackets` | — | 200 `[{ code, label, vehicleTypes }]` | 401 |
 | `GET /health/live`、`GET /health/ready` | — | 200 `{ status, gitSha }` | 503（ready：資料庫連不上） |
 
 *   `VehicleInput`：`plate`、`brand`、`model`、`nickname?`、`color?`、`vehicleType`、`displacementBracket?`、`manufactureDate`、`originalIssueDate`、`licenceInspectionDate?`。
-*   `VehicleDto`：`id`、`version`、`VehicleInput` 的所有欄位、`inspections: [{ kind, status, earliestDate?, deadline?, ruleId, estimated, basis }]`。
-*   `TrashItemDto`：`id`、`plate`、`brand`、`model`、`nickname?`、`vehicleType`、`deletedAt`、`purgeAt`（`deletedAt` + 30 天，畫面顯示「將於 X 永久刪除」）。
+*   `UpdateVehicleRequest` = `VehicleInput` + `version`（`uint?` 加 `[Required]`，沒帶時進入模型驗證錯誤）。
+*   `VehicleDto`：`id`、`version`、`VehicleInput` 的所有欄位、`inspections: [{ kind, status, earliestDate?, deadline?, ruleId?, estimated, basis }]`。`earliestDate` 就是期間起日。
+    *   `EXEMPT`：日期為 null，`ruleId` 為規則 ID，`basis = FORMULA`、`estimated = false`。
+    *   `UNCOMPUTABLE`：日期和 `ruleId` 都是 null，`basis = FORMULA`、`estimated = false`。
+*   `TrashItemDto`：`id`、`plate`、`brand`、`model`、`nickname?`、`vehicleType`、`deletedAt`、`purgeAt`（`deletedAt` + 30 天，畫面顯示「X 後自動移除」）。
+
+**修改車輛（PUT）的檢查順序：** 400 驗證（含 Domain 驗證）→ 404 不存在或不屬於目前使用者 → 409 `VEHICLE_IN_TRASH` → 409 `VEHICLE_MODIFIED` → 409 車牌重複（見 2.3 節）。
 
 #### 1.5 錯誤代碼
 
 | 代碼 | HTTP | 情況 |
 | --- | --- | --- |
-| `VALIDATION_FAILED` | 400 | 必填欄位缺漏（包括 PUT 沒帶 `version`）、格式錯誤（附欄位清單） |
+| `VALIDATION_FAILED` | 400 | 必填欄位缺漏（包括 PUT 沒帶 `version`）、格式錯誤、不認得的代碼值、正規化後的車牌是空的（附 `errors`） |
 | `ISSUE_BEFORE_MANUFACTURE` | 400 | 原發照日早於出廠日 |
-| `DATE_IN_FUTURE` | 400 | 出廠日或原發照日是未來日期 |
-| `BRACKET_TYPE_MISMATCH` | 400 | 級距不屬於該車種，或電動機車送了級距、其他車種沒送 |
+| `DATE_IN_FUTURE` | 400 | 出廠日或原發照日是未來日期（台北時間） |
+| `BRACKET_TYPE_MISMATCH` | 400 | 級距不屬於該車種；電動機車送了級距；或其他車種沒有送級距 |
 | `LICENCE_DATE_NOT_ALLOWED` | 400 | 一般燃油機車或電動機車送了非 null 的指定檢驗日期 |
 | `LICENCE_DATE_BEFORE_ISSUE` | 400 | 指定檢驗日期早於原發照日 |
-| `LICENCE_DATE_TOO_FAR` | 400 | 指定檢驗日期晚於今年 + 2 年的 12/31（不是法規規定，是防止輸入錯誤的合理範圍：指定檢驗日期最多約一年後，留一年緩衝） |
+| `LICENCE_DATE_TOO_FAR` | 400 | 指定檢驗日期晚於（台北時間）今年 + 2 年的 12/31 |
 | `INVALID_CALENDAR` | 400 | 曆法值不是 `ROC` 或 `GREGORIAN` |
 | `CSRF_INVALID` | 400 | CSRF token 缺少或錯誤 |
-| `VEHICLE_NOT_FOUND` | 404 | 車輛不存在或不屬於目前使用者 |
+| `VEHICLE_NOT_FOUND` | 404 | 車輛不存在、不屬於目前使用者，或已在垃圾桶滿 30 天 |
 | `PLATE_EXISTS_ACTIVE` | 409 | 車牌和使用中的車重複 |
 | `PLATE_EXISTS_IN_TRASH` | 409 | 車牌和垃圾桶裡的車重複（附 `trashedVehicleId`） |
 | `VEHICLE_LIMIT_REACHED` | 409 | 已達 50 台（附 `activeCount`、`trashCount`） |
 | `VEHICLE_MODIFIED` | 409 | 版本號不一致 |
-| `VEHICLE_IN_TRASH` | 409 | 修改或丟進垃圾桶的車已在垃圾桶裡 |
-| `VEHICLE_NOT_IN_TRASH` | 409 | 還原或永久刪除的車不在垃圾桶裡 |
+| `VEHICLE_IN_TRASH` | 409 | 要修改或要丟進垃圾桶的車已經在垃圾桶裡 |
+| `VEHICLE_NOT_IN_TRASH` | 409 | 要還原或要永久刪除的車不在垃圾桶裡 |
+
+*   `LICENCE_DATE_TOO_FAR` 不是法規規定，是防止輸入錯誤的合理範圍：指定檢驗日期最多約一年後，留一年緩衝。
+*   **Domain 驗證只回傳第一個錯誤**，檢查順序：
+    1. 必填欄位和格式（`VALIDATION_FAILED`）
+    2. 未來日期（`DATE_IN_FUTURE`）
+    3. 原發照日早於出廠日（`ISSUE_BEFORE_MANUFACTURE`）
+    4. 級距和車種（`BRACKET_TYPE_MISMATCH`）
+    5. 指定檢驗日期：`LICENCE_DATE_NOT_ALLOWED` → `LICENCE_DATE_BEFORE_ISSUE` → `LICENCE_DATE_TOO_FAR`
 
 #### 1.6 資料庫 schema
 
@@ -860,8 +944,8 @@ Calculate(vehicle, today):
 | --- | --- | --- |
 | `id` | `uuid` | PK（`pk_vehicles`） |
 | `owner_id` | `uuid` | NOT NULL，FK → `users.id`（`fk_vehicles_owner`） |
-| `plate` | `text` | NOT NULL，長度 1–16 |
-| `normalized_plate` | `text` | NOT NULL；`(owner_id, normalized_plate)` 唯一（`ux_vehicles_owner_plate`） |
+| `plate` | `text` | NOT NULL，使用者輸入的原始車牌，長度 1–16 |
+| `normalized_plate` | `text` | NOT NULL，至少 1 個字元；`(owner_id, normalized_plate)` 唯一（`ux_vehicles_owner_plate`） |
 | `brand`、`model` | `text` | NOT NULL，長度 1–50 |
 | `nickname`、`color` | `text` | 可 null，長度 ≤ 50 |
 | `vehicle_type` | `text` | NOT NULL，check（`ck_vehicles_type`） |
@@ -870,9 +954,13 @@ Calculate(vehicle, today):
 | `licence_inspection_date` | `date` | 可 null；check：只有 `CAR`、`HEAVY_MC` 可以有值（`ck_vehicles_licence_date`） |
 | `deleted_at` | `timestamptz` | 可 null；`(owner_id, deleted_at)` 索引（`ix_vehicles_owner_deleted`），供 30 天清除使用 |
 | `created_at`、`updated_at` | `timestamptz` | NOT NULL |
-| `xmin` | 系統欄位 | 對應 `uint Version`，同時編輯檢查 |
+| `xmin` | 系統欄位 | 對應實體的 `uint Version`，用於同時編輯檢查 |
 
-`data_protection_keys`：框架定義的欄位，放在獨立的 DbContext 和 migration。
+`data_protection_keys`：框架定義的欄位（`id`、`friendly_name`、`xml`），放在獨立的 DbContext 和 migration。
+
+**時間：** 所有時間戳記（`created_at`、`updated_at`、`deleted_at`）都由程式從 `TimeProvider` 取得後寫入，不用資料庫的 `now()`。「滿 30 天」的截止時間 = `TimeProvider.GetUtcNow()` − 30 天，`deleted_at <= 截止時間` 就算滿 30 天。
+
+**migration 歷史表：** `AppDbContext` 用 `__ef_migrations_history`，`DataProtectionKeyContext` 用 `__ef_dp_migrations_history`。
 
 #### 1.7 命名慣例
 
@@ -887,55 +975,78 @@ Calculate(vehicle, today):
 | 資料表、欄位、索引、constraint | 全小寫，單字之間用底線（snake_case）；索引和 constraint 用 `pk_`、`fk_`、`ux_`、`ix_`、`ck_` 前綴 | `licence_inspection_date`、`ux_vehicles_owner_plate` |
 | C# 型別、方法、屬性 | PascalCase | `InspectionCalculator`、`LicenceInspectionDate` |
 | 環境變數 | 全大寫，單字之間用底線 | `ALLOWED_EMAILS`、`MASTER_KEY` |
+| log 事件 | 全大寫，單字之間用底線 | `LICENCE_DATE_MISMATCH`、`INSPECTION_UNCOMPUTABLE` |
 | 前端檔案 | Vue 元件 PascalCase；其他 TypeScript 檔案 camelCase | `VehicleListPage.vue`、`useCurrentUser.ts`、`calendar.ts` |
 
-新增端點、欄位或代碼時照這張表命名。ASP.NET Core 預設把 JSON 序列化成 camelCase；EF Core 的欄位名稱要明確對應成 snake_case（例如用命名慣例套件或在設定檔裡指定）。
+新增端點、欄位或代碼時照這張表命名。ASP.NET Core 預設把 JSON 屬性序列化成 camelCase。資料庫的 snake_case 名稱由 `EFCore.NamingConventions` 的 `UseSnakeCaseNamingConvention()` 產生，兩個 DbContext 都使用；實作時先確認這個套件有支援 EF Core 10 的穩定版，沒有的話改用 `ToTable`、`HasColumnName` 手動指定。
 
 ### 2. 檔案清單
 
+repo 目前沒有程式碼，以下檔案都是新增。
+
 #### 2.1 Repo 根目錄
 
-| 檔案 | 新增／修改 | 內容與理由 |
-| --- | --- | --- |
-| `.gitignore` | 新增 | 第一個 commit 就包含 `.env`、`**/.env`、`bin/`、`obj/`、`node_modules/`、`web/dist/`；防止密鑰和建置產物進 git |
-| `.editorconfig` | 新增 | 統一縮排和換行，讓 diff 乾淨 |
-| `global.json` | 新增 | 固定 .NET 10 SDK 版本，Dockerfile 和 CI 用同一版本 |
-| `Directory.Build.props` | 新增 | 所有專案共用：`Nullable=enable`、`TreatWarningsAsErrors=true`、`InvariantGlobalization=false`（NFKC 需要） |
-| `Directory.Packages.props` | 新增 | 集中管理 NuGet 套件版本 |
-| `VehicleGo.sln` | 新增 | 方案，包含 4 個 `src` 專案和 2 個 `tests` 專案 |
-| `postgres-image.txt` | 新增 | PostgreSQL 映像檔標籤（例如 `postgres:17.x`），Compose 和 Testcontainers 都讀它，CI 不依賴 `.env` |
-| `.env.example` | 新增 | 列出所有環境變數和範例值（Email 一律用 `example.com`），附 `openssl rand -base64 32` 產生 `MASTER_KEY` 的說明 |
-| `docker-compose.yml` | 新增 | `db`、`api` 兩個服務；只引用 `${...}` 變數；`build.args: GIT_SHA`；log 輪替；`api` 固定對外 port 8080（Google OAuth 的 redirect URI 為 `http://localhost:8080/signin-oidc`；Vite 開發伺服器 `http://localhost:5173/signin-oidc` 也要註冊） |
-| `Dockerfile` | 新增 | multi-stage：Node 建置 `web/` → .NET publish `VehicleGo.Web`（含 `wwwroot`）→ runtime（含 tzdata，非 chiseled／Alpine） |
-| `deploy.sh` | 新增 | 匯出 `GIT_SHA`（有未 commit 修改時加 `-dirty`）；`docker compose up -d --build`；不執行 `git pull` |
-| `scripts/check-secrets.sh` | 新增 | `.env`（含子資料夾）被追蹤就失敗；掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml` 中 RFC 2606 保留網域以外的 Email；可傳入「只檢查暫存檔」參數供 hook 使用 |
-| `.githooks/pre-commit` | 新增（可執行） | 先跑 `check-secrets.sh`（暫存檔），再跑 `gitleaks git --staged`；gitleaks 沒安裝或版本和 `.gitleaks-version` 不同時失敗並提示安裝方式 |
-| `.gitleaks.toml` | 新增 | `[extend] useDefault = true`；排除 HKDF 測試向量等已知的假值 |
-| `.gitleaks-version`、`.gitleaks-version.sha256` | 新增 | gitleaks 版本號（不含 `v`）和下載檔的 SHA-256 |
-| `.gitleaksignore` | 新增 | 空檔；日後處理過的誤判或已更換的密鑰 fingerprint |
-| `.github/workflows/ci.yml` | 新增 | job：`backend`（建置、`UnitTests`、`IntegrationTests`）、`frontend`（`npm ci`、`typecheck`、`test:unit`、`build`）、`check-secrets`、`gitleaks`（`fetch-depth: 0` 掃完整歷史）；`permissions: contents: read`；觸發 `pull_request` 和 push 任何分支 |
-| `README.md` | 新增 | 啟用 hook（`git config core.hooksPath .githooks`）、建立 `.env`、`deploy.sh`、清空重建指令（`docker compose down -v`）、Google OAuth redirect URI 設定 |
+| 檔案 | 內容與理由 |
+| --- | --- |
+| `.gitignore` | 第一個 commit 就包含 `.env`、`**/.env`、`bin/`、`obj/`、`node_modules/`、`web/dist/`；防止密鑰和建置產物進 git |
+| `.editorconfig` | 統一縮排、換行字元和檔尾換行 |
+| `global.json` | 固定 .NET 10 SDK 版本，Dockerfile 和 CI 用同一版本 |
+| `.config/dotnet-tools.json` | 固定 `dotnet-ef` 版本；`dotnet tool restore` 安裝 |
+| `Directory.Build.props` | 所有專案共用：`Nullable=enable`、`TreatWarningsAsErrors=true`、`<WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>`（套件弱點警告不擋建置，避免新的 CVE 公布後 CI 突然失敗）、`InvariantGlobalization=false`（NFKC 需要） |
+| `Directory.Packages.props` | 集中管理 NuGet 套件版本，包括 `EFCore.NamingConventions`、`Microsoft.AspNetCore.DataProtection.EntityFrameworkCore` |
+| `VehicleGo.slnx` | 方案（.NET 10 SDK 預設格式）；依實作順序逐步加入 4 個 `src` 專案和 2 個 `tests` 專案 |
+| `postgres-image.txt` | PostgreSQL 映像檔標籤（例如 `postgres:17.x`）；Testcontainers 直接讀，Compose 透過 `deploy.sh` 匯出的 `POSTGRES_IMAGE` 取得 |
+| `.env.example` | 依下方環境變數表列出所有要手動填的變數和範例值（Email 一律用 `example.com`），附 `openssl rand -base64 32` 產生 `MASTER_KEY` 的說明 |
+| `docker-compose.yml` | `db`、`api` 兩個服務；只引用 `${...}` 變數；`image: ${POSTGRES_IMAGE:?請用 deploy.sh 執行}`；`build.args: GIT_SHA: ${GIT_SHA:-unknown}`；用 `POSTGRES_*` 組成 `ConnectionStrings__Default`；log 輪替；`api` 對外 port 8080 |
+| `Dockerfile` | multi-stage：Node 建置 `web/` → .NET publish `VehicleGo.Web`（含 `wwwroot`）→ runtime `mcr.microsoft.com/dotnet/aspnet:10.0-noble`（Ubuntu，內含 tzdata 和 ICU；預設以非 root 的 `app` 使用者執行） |
+| `deploy.sh` | 匯出 `GIT_SHA`（有未 commit 修改時加 `-dirty`）和 `POSTGRES_IMAGE=$(cat postgres-image.txt)`；`docker compose up -d --build`；不執行 `git pull` |
+| `scripts/check-secrets.sh` | `.env`（含子資料夾）被追蹤就失敗；掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml` 中 RFC 2606 保留網域以外的 Email；`--staged` 參數只檢查暫存檔，供 hook 使用 |
+| `.githooks/pre-commit` | 先跑 `check-secrets.sh --staged`，再跑 `gitleaks git --pre-commit --staged --redact`；gitleaks 沒安裝或版本和 `.gitleaks-version` 不同時失敗並提示安裝方式 |
+| `.gitleaks.toml` | `[extend] useDefault = true`；用 `[[allowlists]]` 和 `paths` 排除 `tests/VehicleGo.UnitTests/Infrastructure/KeyDerivationTests.cs` 的假測試向量 |
+| `.gitleaks-version`、`.gitleaks-version.sha256` | gitleaks 版本號（不含 `v`）和下載檔的 SHA-256 |
+| `.gitleaksignore` | 初始為空檔；日後記錄已確認的誤判，或已更換的密鑰 fingerprint |
+| `.github/workflows/ci.yml` | 見下方 CI 說明 |
+| `README.md` | 啟用 hook（`git config core.hooksPath .githooks`）；建立 `.env`；所有 Compose 操作都透過 `deploy.sh`（清空重建 `docker compose down -v` 除外）；Google OAuth redirect URI 要註冊 `http://localhost:8080/signin-oidc` 和 `http://localhost:5173/signin-oidc`；只能用 `localhost` 連線（用區網 IP 的 http 連線，OIDC 的 cookie 會被瀏覽器拒絕，無法登入）；產生 migration 的指令（見 2.4 節） |
+
+**環境變數：**
+
+| 變數 | 用途 | 範例值 | 誰讀取 |
+| --- | --- | --- | --- |
+| `ALLOWED_EMAILS` | 登入名單；逗號分隔，每個 Email 去空白、轉小寫後比對 | `alice@example.com,bob@example.com` | `api` |
+| `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET` | Google OIDC | （Google Cloud Console 取得） | `api` |
+| `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` | 資料庫帳號 | `vehiclego`、（隨機產生）、`vehiclego` | `db`；compose 用它們組成連線字串 |
+| `ConnectionStrings__Default` | 資料庫連線字串 | 由 compose 組成，不寫在 `.env` | `api` |
+| `MASTER_KEY` | 推導加密金鑰；Base64、32 bytes | `openssl rand -base64 32` 產生 | `api` |
+| `GIT_SHA` | 健康檢查顯示的版本 | 由 `deploy.sh` 匯出 | 建置 `api` 時 |
+| `POSTGRES_IMAGE` | PostgreSQL 映像檔標籤 | 由 `deploy.sh` 從 `postgres-image.txt` 匯出 | compose |
+
+**CI（`.github/workflows/ci.yml`）：**
+*   **觸發：** `pull_request` 和 push 任何分支；`permissions: contents: read`。
+*   **`backend`：** `dotnet build VehicleGo.slnx`、`dotnet test` `UnitTests` 和 `IntegrationTests`（實作順序第 5 步起）。
+*   **`frontend`：** `npm ci`、`typecheck`、`test:unit`、`build`（實作順序第 6 步起）。
+*   **`check-secrets`：** 執行 `scripts/check-secrets.sh`。
+*   **`gitleaks`：** `fetch-depth: 0`；依 `.gitleaks-version` 下載 release tarball，用 `.gitleaks-version.sha256` 執行 `sha256sum -c` 驗證後，執行 `gitleaks git --redact` 掃完整歷史。
 
 #### 2.2 `src/VehicleGo.Domain/`
 
 | 檔案 | 內容與理由 |
 | --- | --- |
 | `VehicleGo.Domain.csproj` | 不參考任何其他專案或框架套件 |
-| `Common/ErrorCode.cs` | 1.5 節所有錯誤代碼的常數 |
+| `Common/ErrorCode.cs` | 1.5 節所有錯誤代碼 |
 | `Common/Result.cs` | 成功或失敗（附錯誤代碼和欄位）的結果型別，取代拋出例外 |
-| `Vehicles/VehicleType.cs`、`Vehicles/DisplacementBracket.cs` | 1.1 節的代碼；車種的中文標籤為「自用小客車（非營業用）」「一般燃油機車」「大型重型機車」「電動機車（40 馬力以下）」 |
+| `Vehicles/VehicleType.cs`、`Vehicles/DisplacementBracket.cs` | 1.1 節的代碼（enum）；車種的中文標籤為「自用小客車（非營業用）」「一般燃油機車」「大型重型機車」「電動機車（40 馬力以下）」 |
 | `Vehicles/DisplacementBrackets.cs` | 級距清單（代碼、中文標籤、適用車種、法規出處）和 Technical Plan 第 2 節的「車種 → 可用級距 → 必填」對照 |
-| `Vehicles/PlateNormalizer.cs` | NFKC、轉大寫、去空白和連字號 |
+| `Vehicles/PlateNormalizer.cs` | NFKC（`string.Normalize(NormalizationForm.FormKC)`）、轉大寫、去空白和連字號 |
 | `Vehicles/Vehicle.cs` | 車輛實體；建立和修改時呼叫驗證；丟進垃圾桶、還原的狀態轉換 |
-| `Vehicles/VehicleValidator.cs` | 日期先後、未來日期、級距與車種、指定檢驗日期規則（需要「今天」作為參數） |
+| `Vehicles/VehicleValidator.cs` | 1.5 節的檢查順序；需要「今天」作為參數 |
 | `Vehicles/VehicleLimits.cs` | 上限常數 50 |
 | `Users/User.cs`、`Users/CalendarPreference.cs` | 使用者實體和曆法代碼 |
 | `Inspections/InspectionKind.cs`、`InspectionStatus.cs`、`InspectionBasis.cs` | 1.1 節的代碼 |
 | `Inspections/InspectionItem.cs` | 一個檢驗項目（給 API 用的欄位） |
-| `Inspections/InspectionDiagnostics.cs` | 只給伺服器用：`UNCOMPUTABLE` 原因、指定檢驗日期不一致旗標、公式日期 |
+| `Inspections/InspectionDiagnostics.cs` | 只給伺服器用：`UNCOMPUTABLE` 原因（`NO_RULE`、`INVALID_INPUT`）、指定檢驗日期不一致旗標、公式日期 |
 | `Inspections/InspectionCalculator.cs` | 1.3 節的純函式 |
-| `Inspections/Rules/InspectionRule.cs`、`PeriodCalculation.cs`、`LegalCitation.cs`、`RuleTable.cs` | 1.2 節的規則表，算法用 enum 表示；每條規則有 `EffectiveFrom`；`RuleTable.Current()` 回傳現行規則 |
-| `Inspections/Rules/FirstInspectionDate.cs` | 第一次指定檢驗日期（D-R2、Technical Plan 第 3 節的間隔年數表、1.3 節的 `firstDate`） |
+| `Inspections/Rules/InspectionRule.cs`、`PeriodCalculation.cs`、`LegalCitation.cs`、`RuleTable.cs` | 1.2 節的規則表，算法用 enum 表示；每條規則有 `EffectiveFrom`（規則版本日期 2026-01-01）；`RuleTable.Current()` 回傳現行規則 |
+| `Inspections/Rules/FirstInspectionDate.cs` | `GapYears` 和第一次指定檢驗日期（D-R2、Technical Plan 第 3 節的間隔年數表） |
 
 #### 2.3 `src/VehicleGo.Application/`
 
@@ -943,123 +1054,188 @@ Calculate(vehicle, today):
 | --- | --- |
 | `VehicleGo.Application.csproj` | 只參考 Domain |
 | `Abstractions/ICommandHandler.cs`、`IQueryHandler.cs` | handler 介面（D-T3） |
-| `Abstractions/IVehicleRepository.cs` | `GetForOwnerAsync(id, includeTrashed)`、`LockOwnerAsync(ownerId)`（在交易中對 `users` 該列 `SELECT ... FOR UPDATE`）、`CountForOwnerIncludingTrashAsync`、`PurgeExpiredTrashAsync(ownerId, cutoff)`（cutoff 由 handler 用 `TimeProvider` 算出，不用 SQL 的 `now()`，測試才能控制時間）、`AddAsync`、`SaveAsync(vehicle, expectedVersion?)`、`DeleteAsync` |
-| `Abstractions/IUserRepository.cs` | `UpsertOnLoginAsync(sub, emailEncrypted, emailHash)`（回傳 `users.id`，寫進 cookie）、`GetAsync`、`GetCalendarPreferenceAsync`（`/api/me` 用，D-T2 的例外）、`SaveAsync` |
-| `Abstractions/IVehicleQueries.cs` | 列出使用中的車、取單台、列出垃圾桶（都只限目前使用者） |
+| `Abstractions/IUnitOfWork.cs` | `Task<Result<T>> ExecuteInTransactionAsync<T>(Func<Task<Result<T>>> work)`：在同一個資料庫交易裡執行；回傳失敗時 rollback |
+| `Abstractions/IVehicleRepository.cs` | 見下方方法清單 |
+| `Abstractions/IUserRepository.cs` | `Task<Guid> UpsertOnLoginAsync(sub, emailEncrypted, emailHash)`（回傳 `users.id`，寫進 cookie）、`Task<User?> GetAsync(id)`、`Task<CalendarPreference> GetCalendarPreferenceAsync(id)`（`/api/me` 用，D-T2 的例外）、`Task SaveAsync(user)` |
+| `Abstractions/IVehicleQueries.cs` | 列出使用中的車、取單台、列出垃圾桶（都只限目前使用者；列出垃圾桶帶截止時間參數） |
 | `Abstractions/ICurrentUser.cs` | 目前使用者 ID 和 cookie 裡的 Email（都從 cookie 的 claim 讀取，不查資料庫） |
 | `Abstractions/IEmailProtector.cs` | 加密 Email、計算查詢雜湊 |
 | `Abstractions/IAllowlistProvider.cs` | 取得名單 |
 | `Common/TaipeiToday.cs` | 由 `TimeProvider` 取得台北時間的今天 |
-| `Auth/LoginAdmission.cs` | 名單比對 + `email_verified` |
-| `Auth/EnsureUserCommand.cs`（含 handler） | 登入時建立或更新使用者（`INSERT ... ON CONFLICT`，同時第一次登入只建立一筆） |
-| `Vehicles/CreateVehicleCommand.cs`、`UpdateVehicleCommand.cs`、`TrashVehicleCommand.cs`、`RestoreVehicleCommand.cs`、`PurgeVehicleCommand.cs`（各含 handler） | 寫入使用案例；新增和修改先清除該使用者滿 30 天的垃圾桶車輛；新增和修改依規則引擎診斷寫 `LICENCE_DATE_MISMATCH`、`UNCOMPUTABLE` log |
-| `Vehicles/ListVehiclesQuery.cs`、`GetVehicleQuery.cs`、`ListTrashQuery.cs`（各含 handler） | 讀取使用案例；呼叫規則引擎；排序（G5：最後期限排序時免檢和無法計算排最後；出廠日排序時舊的在前；同日依車牌） |
+| `Auth/LoginAdmission.cs` | 名單比對（去空白、轉小寫）+ `email_verified` |
+| `Auth/EnsureUserCommand.cs`（含 handler） | 登入時建立或更新使用者；同一帳號同時多次第一次登入時，只建立一筆使用者 |
+| `Vehicles/CreateVehicleCommand.cs`、`UpdateVehicleCommand.cs`、`TrashVehicleCommand.cs`、`RestoreVehicleCommand.cs`、`DeleteVehicleCommand.cs`（各含 handler） | 寫入使用案例；新增和修改見下方流程 |
+| `Vehicles/ListVehiclesQuery.cs`、`GetVehicleQuery.cs`、`ListTrashQuery.cs`（各含 handler） | 讀取使用案例；呼叫規則引擎；排序（G5） |
 | `Vehicles/VehicleDto.cs`、`InspectionDto.cs`、`TrashItemDto.cs` | 回應資料 |
 | `Me/GetMeQuery.cs`、`UpdatePreferencesCommand.cs`（各含 handler） | `/api/me`；讀取走 `IUserRepository`（D-T2 的例外） |
 | `Reference/GetDisplacementBracketsQuery.cs`（含 handler） | 級距清單 |
 | `DependencyInjection.cs` | 掃描組件，註冊所有 handler |
 
+**`IVehicleRepository` 的方法：**
+*   `Task<Vehicle?> GetForOwnerAsync(Guid id, bool includeTrashed, DateTimeOffset cutoff)`：已在垃圾桶滿 30 天的車回傳 null。
+*   `Task<Vehicle?> FindByNormalizedPlateAsync(Guid ownerId, string normalizedPlate, DateTimeOffset cutoff)`：包括垃圾桶裡未滿 30 天的車。
+*   `Task LockOwnerAsync(Guid ownerId)`：在交易中鎖住使用者那一列。
+*   `Task<(int Active, int Trash)> CountForOwnerAsync(Guid ownerId)`：包括垃圾桶。
+*   `Task PurgeExpiredTrashAsync(Guid ownerId, DateTimeOffset cutoff)`：永久刪除 `deleted_at <= cutoff` 的車。
+*   `Task AddAsync(Vehicle vehicle)`、`Task<Result> SaveAsync(Vehicle vehicle, uint? expectedVersion)`、`Task DeleteAsync(Vehicle vehicle)`。
+
+截止時間由 handler 用 `TimeProvider` 算出（1.6 節）。
+
+**新增和修改車輛的流程（都在 `IUnitOfWork.ExecuteInTransactionAsync` 裡）：**
+1. Domain 驗證（1.5 節的順序），失敗就回錯誤。
+2. `LockOwnerAsync`：同一使用者的寫入排隊執行。
+3. `PurgeExpiredTrashAsync`：先清除滿 30 天的垃圾桶車輛。
+4. 修改時：`GetForOwnerAsync`（不存在 → `VEHICLE_NOT_FOUND`；在垃圾桶 → `VEHICLE_IN_TRASH`）。
+5. `FindByNormalizedPlateAsync`：查到使用中的其他車 → `PLATE_EXISTS_ACTIVE`；查到垃圾桶裡的車 → `PLATE_EXISTS_IN_TRASH`（附 `trashedVehicleId`）。
+6. 新增時：`CountForOwnerAsync` ≥ 50 → `VEHICLE_LIMIT_REACHED`。
+7. `AddAsync` 或 `SaveAsync`（修改時版本號不一致 → `VEHICLE_MODIFIED`）。
+8. 交易提交後，依規則引擎的診斷寫 log：`LICENCE_DATE_MISMATCH`（欄位：車輛 ID、車種、出廠日、原發照日、填入的指定檢驗日期、公式日期；不含車牌）；`INSPECTION_UNCOMPUTABLE`（欄位：車輛 ID、檢驗種類、原因）。
+
 #### 2.4 `src/VehicleGo.Infrastructure/`
 
 | 檔案 | 內容與理由 |
 | --- | --- |
-| `VehicleGo.Infrastructure.csproj` | 參考 Application、Domain；EF Core、Npgsql |
-| `Persistence/AppDbContext.cs` | `users`、`vehicles`；具名查詢過濾器「owner」「deleted」 |
-| `Persistence/Configurations/UserConfiguration.cs`、`VehicleConfiguration.cs` | 1.6 節的欄位、索引、check constraint 和名稱；`xmin` |
-| `Persistence/PostgresErrorMapper.cs` | 依 constraint 名稱把 23505 轉成 `PLATE_EXISTS_*`；`DbUpdateConcurrencyException` 轉成 `VEHICLE_MODIFIED` |
-| `Persistence/Repositories/VehicleRepository.cs`、`UserRepository.cs` | 實作 Repository；PUT 時把用戶端版本設成 `OriginalValue`；計數只關閉「deleted」過濾器 |
+| `VehicleGo.Infrastructure.csproj` | 參考 Application、Domain；EF Core、Npgsql、`EFCore.NamingConventions`、`Microsoft.AspNetCore.DataProtection.EntityFrameworkCore` |
+| `Persistence/AppDbContext.cs` | `users`、`vehicles`；`UseSnakeCaseNamingConvention()`；具名查詢過濾器 `Owner`（擁有者）和 `Deleted`（已刪除）；注入 `ICurrentUser`，`Owner` 過濾器參照 DbContext 的實例屬性，沒有目前使用者時用 `Guid.Empty`（查不到任何車）；不使用 DbContext pooling |
+| `Persistence/AppDbContextFactory.cs` | `IDesignTimeDbContextFactory<AppDbContext>`：產生 migration 時直接建立 DbContext，不走 Web 的啟動驗證 |
+| `Persistence/Configurations/UserConfiguration.cs`、`VehicleConfiguration.cs` | 1.6 節的欄位、索引、check constraint 和名稱；enum `HasConversion<string>`；`Property(v => v.Version).IsRowVersion()`（對應 `xmin`） |
+| `Persistence/UnitOfWork.cs` | 實作 `IUnitOfWork`：`Database.BeginTransactionAsync()`；不啟用 Npgsql 的 `EnableRetryOnFailure`（自己開的交易不能直接和自動重試一起用） |
+| `Persistence/PostgresErrorMapper.cs` | 23505（`ux_vehicles_owner_plate`）只當同時寫入的後備，固定轉成 `PLATE_EXISTS_ACTIVE`；`DbUpdateConcurrencyException` 轉成 `VEHICLE_MODIFIED`；回傳 Domain 的 `ErrorCode` |
+| `Persistence/Repositories/VehicleRepository.cs`、`UserRepository.cs` | 見下方實作說明 |
 | `Persistence/Queries/VehicleQueries.cs` | 實作查詢服務（`AsNoTracking`） |
-| `Persistence/Migrations/` | `AppDbContext` 的 EF Core migration（產生的檔案） |
+| `Persistence/Migrations/` | `AppDbContext` 的 migration（產生的檔案） |
 | `Crypto/MasterKey.cs` | 讀取並驗證 `MASTER_KEY`（Base64、32 bytes） |
-| `Crypto/KeyDerivation.cs` | HKDF-SHA256，salt 為空，info 為標籤 |
-| `Crypto/AesGcmProtector.cs` | 版本 byte + nonce + tag + 密文；associated data 為用途字串 |
+| `Crypto/KeyDerivation.cs` | `HKDF.DeriveKey(HashAlgorithmName.SHA256, masterKey, 32, salt: [], info: UTF-8(標籤))` |
+| `Crypto/AesGcmProtector.cs` | `new AesGcm(key, tagSizeInBytes: 16)`；格式：版本 byte `0x01` + nonce 12 bytes + tag 16 bytes + 密文；每次加密用 `RandomNumberGenerator.Fill` 產生新的 nonce；associated data 為用途字串（`email:v1`、`dpkey:v1`） |
 | `Crypto/EmailProtector.cs` | 實作 `IEmailProtector` |
-| `DataProtection/DataProtectionKeyContext.cs` | 獨立的 DbContext，只存 Data Protection 金鑰 |
+| `DataProtection/DataProtectionKeyContext.cs` | 獨立的 DbContext，實作 `IDataProtectionKeyContext`（`DbSet<DataProtectionKey> DataProtectionKeys`）；`UseSnakeCaseNamingConvention()` |
+| `DataProtection/DataProtectionKeyContextFactory.cs` | `IDesignTimeDbContextFactory<DataProtectionKeyContext>` |
 | `DataProtection/Migrations/` | 這個 DbContext 的 migration |
-| `DataProtection/AesGcmXmlEncryptor.cs`、`AesGcmXmlDecryptor.cs` | 加密 Data Protection 金鑰；解密失敗寫 Error log |
-| `DependencyInjection.cs` | 註冊 DbContext、Repository、查詢服務、加密、Data Protection |
+| `DataProtection/AesGcmXmlEncryptor.cs` | `Encrypt` 回傳 `new EncryptedXmlInfo(element, typeof(AesGcmXmlDecryptor))`；透過 `KeyManagementOptions.XmlEncryptor` 註冊 |
+| `DataProtection/AesGcmXmlDecryptor.cs` | 提供 `AesGcmXmlDecryptor(IServiceProvider services)` 建構式（框架用它建立解密器，不是從 DI 注入），從 `services` 取得 `MasterKey` 和 `ILogger`；解密失敗寫 Error log |
+| `DependencyInjection.cs` | 註冊 DbContext、Repository、查詢服務、`IUnitOfWork`、加密；Data Protection：`PersistKeysToDbContext<DataProtectionKeyContext>()`、`SetApplicationName("VehicleGo")` |
+
+**Repository 實作說明：**
+*   **鎖定：** `LockOwnerAsync` 用原生 SQL `SELECT 1 FROM users WHERE id = @ownerId FOR UPDATE`（EF Core 沒有 `FOR UPDATE` 的 LINQ 寫法）。
+*   **計數和垃圾桶查詢：** 只關閉 `Deleted` 過濾器（`IgnoreQueryFilters(["Deleted"])`），不能關閉 `Owner` 過濾器。
+*   **清除：** `PurgeExpiredTrashAsync` 用 `ExecuteDeleteAsync`，同樣要 `IgnoreQueryFilters(["Deleted"])`，否則刪不到垃圾桶裡的車。
+*   **修改：** 先把車輛查出來（tracked），再設定 `Entry(v).Property(x => x.Version).OriginalValue = expectedVersion`；不要用 `Attach` 一個新物件。
+*   **登入時建立或更新使用者：** 用原生 SQL `INSERT ... ON CONFLICT (google_sub) DO UPDATE ... RETURNING id`（EF Core 沒有 upsert）。
+
+**產生 migration：**
+
+```bash
+dotnet ef migrations add <名稱> --project src/VehicleGo.Infrastructure --context AppDbContext --output-dir Persistence/Migrations
+```
+
+```bash
+dotnet ef migrations add <名稱> --project src/VehicleGo.Infrastructure --context DataProtectionKeyContext --output-dir DataProtection/Migrations
+```
 
 #### 2.5 `src/VehicleGo.Web/`
 
 | 檔案 | 內容與理由 |
 | --- | --- |
 | `VehicleGo.Web.csproj` | 參考 Application、Infrastructure |
-| `Program.cs` | 組裝相依性；啟動時套用兩個 DbContext 的 migration；JSON console log；ProblemDetails；健康檢查；靜態檔與 SPA fallback（排除 `/api`、`/signin-oidc`）；`--healthcheck` 參數（runtime 映像檔沒有 curl，Compose 的容器健康檢查改用 `dotnet VehicleGo.Web.dll --healthcheck`，由程式自己呼叫 `/health/ready`，成功回傳 0） |
+| `Program.cs` | 見下方說明 |
 | `appsettings.json` | 不含任何密鑰；log 等級 |
-| `Startup/StartupValidation.cs` | 啟動時檢查 `MASTER_KEY`、Asia/Taipei、`ALLOWED_EMAILS`（空的時候警告並全部拒絕） |
-| `Auth/AuthenticationSetup.cs` | cookie 為預設 scheme；OIDC（Scope 只有 `openid email`、`ResponseType=code`、`MapInboundClaims=false`、`SaveTokens=false`）；`OnTokenValidated`、`OnValidatePrincipal`、`OnRedirectToLogin`／`OnRedirectToAccessDenied`、`OnRemoteFailure`；cookie 有效 14 天、sliding expiration；登入時 cookie 寫入 `users.id`、`sub`、Email 三個 claim |
+| `Startup/StartupValidation.cs` | 啟動時檢查 `MASTER_KEY`、Asia/Taipei 時區、`ALLOWED_EMAILS`（空的時候警告並全部拒絕） |
+| `Auth/AuthenticationSetup.cs` | 見下方說明 |
+| `Auth/OidcSignInHandler.cs` | Google 登入回來時的處理：輸入 `sub`、`email`、`email_verified`，呼叫 `LoginAdmission` 和 `EnsureUserCommand`，輸出「通過，附使用者 ID」或「拒絕」。`OnTokenValidated` 和測試登入端點都呼叫這個類別 |
 | `Auth/EnvironmentAllowlistProvider.cs` | 實作 `IAllowlistProvider`（讀 `ALLOWED_EMAILS`） |
 | `Auth/HttpContextCurrentUser.cs` | 實作 `ICurrentUser`：從 cookie 的 claim 讀取使用者 ID 和 Email |
-| `Security/AntiforgerySetup.cs` | `IAntiforgery`（`X-XSRF-TOKEN`）；先驗證登入再驗證 CSRF |
-| `Errors/ErrorCodeMapping.cs` | 錯誤代碼 → HTTP 狀態碼與 ProblemDetails |
-| `Contracts/VehicleInput.cs`、`UpdateVehicleRequest.cs`、`UpdatePreferencesRequest.cs` | 請求資料 |
 | `Auth/ReturnUrlValidator.cs` | `returnUrl` 只接受站內相對路徑，拒絕 `//`、`/\` 開頭，不合法時改用 `/` |
-| `Controllers/AuthController.cs`、`MeController.cs`、`VehiclesController.cs`、`TrashController.cs`、`ReferenceController.cs` | 1.4 節的端點；handler 用 `[FromServices]` 注入在 action 上 |
+| `Security/AntiforgeryFilter.cs` | 自訂 filter，排在登入檢查之後：GET 等不改資料的請求略過；其他請求呼叫 `IAntiforgery.ValidateRequestAsync`；失敗時回傳 `code = CSRF_INVALID` 的 ProblemDetails。`IAntiforgery` 的 `HeaderName = "X-XSRF-TOKEN"` |
+| `Errors/ErrorCodeMapping.cs` | 錯誤代碼 → HTTP 狀態碼與 ProblemDetails；`InvalidModelStateResponseFactory` 把框架自動產生的 400 轉成 `VALIDATION_FAILED`（附 `errors`） |
+| `Contracts/VehicleInput.cs`、`UpdateVehicleRequest.cs`、`UpdatePreferencesRequest.cs` | 請求資料（1.4 節） |
+| `Controllers/AuthController.cs`、`MeController.cs`、`VehiclesController.cs`、`TrashController.cs`、`ReferenceController.cs` | 1.4 節的端點；handler 用 `[FromServices]` 注入在 action 上，避免建構子變長；`MeController` 的 `GET /api/me` 用 `GetAndStoreTokens` 產生 token，寫進 `XSRF-TOKEN` cookie（不設 HttpOnly） |
 
-#### 2.6 `tests/VehicleGo.UnitTests/`（xUnit）
+**`Program.cs`：**
+*   組裝相依性；JSON console log；ProblemDetails；靜態檔與 SPA fallback（排除 `/api`、`/signin-oidc`）。
+*   啟動時套用兩個 DbContext 的 migration。
+*   健康檢查：`AddDbContextCheck<AppDbContext>()`（`Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore`）；自訂 `ResponseWriter` 輸出 `{ status, gitSha }`。
+*   `--healthcheck` 參數：runtime 映像檔沒有 curl，Compose 的容器健康檢查改用 `dotnet VehicleGo.Web.dll --healthcheck`。這個參數在建立 `WebApplication` 之前處理：從 `ASPNETCORE_HTTP_PORTS`（預設 8080）取得 port，呼叫 `/health/ready`，成功回傳 0。
+
+**`Auth/AuthenticationSetup.cs`：**
+*   `DefaultScheme` 和 `DefaultChallengeScheme` 都是 Cookie，所以 `/api` 未登入時回 401，不會被轉到 Google；`/api/auth/login` 明確呼叫 `Challenge(OpenIdConnectDefaults.AuthenticationScheme)`。
+*   OIDC：`Scope.Clear()` 後只加 `openid`、`email`；`ResponseType = Code`；`MapInboundClaims = false`；`SaveTokens = false`。
+*   事件：`OnTokenValidated`（呼叫 `OidcSignInHandler`，拒絕時導向 `/not-allowed`）、`OnValidatePrincipal`（每次請求比對名單）、`OnRedirectToLogin`／`OnRedirectToAccessDenied`（`/api` 回 401／403）、`OnRemoteFailure`。
+*   cookie 有效 14 天、sliding expiration；登入時寫入 `users.id`、`sub`、Email 三個 claim。
+*   SPA 登入後要先呼叫 `/api/me` 取得新的 CSRF token，因為 token 綁定登入的使用者。
+
+#### 2.6 `tests/VehicleGo.UnitTests/`（xUnit v3）
 
 | 檔案 | 內容與理由 |
 | --- | --- |
-| `VehicleGo.UnitTests.csproj` | 參考 Domain、Application、Infrastructure；xUnit、ArchUnitNET、`Microsoft.Extensions.TimeProvider.Testing` |
-| `Domain/InspectionCalculatorCarTests.cs` | 汽車：CUJ 3、4、4b、12 的確切檢驗期間；未滿 5 年（含滿 5 年前一個月內已進入檢驗期間、狀態 `IN_WINDOW`、規則 `AGE0TO5`）、剛好 5 年、10 年切換前後、2/29 發照遇到非閏年、3/31 − 1 個月、8/31 + 6 個月、`estimated` |
-| `Domain/InspectionCalculatorMotorcycleTests.cs` | 燃油機車和大型重機的排氣定檢（月份計算、1 月和 12 月跨年、「出廠日 + 5 年」落在檢驗期間內）；大型重機兩種檢驗；電動機車免檢 |
-| `Domain/InspectionCalculatorLicenceDateTests.cs` | 指定檢驗日期為準、填過去的日期會往後推、未滿 5 年也用指定檢驗日期、滿 10 年時加推算期間（`basis: LICENCE`、`estimated: true`）、CUJ 4c（填下一次的日期時補上 L − 6 個月的推算期間）、2/29 週年日在閏年仍是 2/29、不一致的診斷 |
-| `Domain/FirstInspectionDateTests.cs` | 間隔年數表的每一列和邊界：相隔剛好 1 年（+5）、剛好 2 年（+4）、剛好 3 年（+3）、剛好 4 年（+2）、逾 4 年（+1） |
+| `VehicleGo.UnitTests.csproj` | 依實作順序參考 Domain、Application、Infrastructure；xUnit v3、`TngTech.ArchUnitNET.xUnitV3`、`Microsoft.Extensions.TimeProvider.Testing` |
+| `Domain/InspectionCalculatorCarTests.cs` | CUJ 3、12 的確切檢驗期間；未滿 5 年（含滿 5 年前一個月內已進入檢驗期間、狀態 `IN_WINDOW`、規則 `AGE0TO5`）、剛好 5 年、10 年切換前後、2/29 發照遇到非閏年、3/31 − 1 個月、8/31 + 6 個月（先加 6 個月得 2/28，檢驗期間 1/28–3/28；閏年 2/29，1/29–3/29）、`estimated` |
+| `Domain/InspectionCalculatorMotorcycleTests.cs` | CUJ 5、6 的確切結果；燃油機車和大型重機的排氣定檢（月份計算、1 月和 12 月跨年、2 月和 11 月發照的最後期限、「出廠日 + 5 年」落在檢驗期間內）；大型重機兩種檢驗（有填指定檢驗日期時，排氣定檢仍是 `basis = FORMULA`）；電動機車免檢的欄位值 |
+| `Domain/InspectionCalculatorLicenceDateTests.cs` | CUJ 4、4b、4c；指定檢驗日期為準、填過去的日期會往後推、未滿 5 年也用指定檢驗日期、滿 10 年時加推算期間（`basis: LICENCE`、`estimated: true`）、2/29 週年日在閏年仍是 2/29、不一致的判斷（含指定檢驗日期早於第一次公式日期） |
+| `Domain/InspectionCalculatorUncomputableTests.cs` | `NO_RULE`、`INVALID_INPUT` 的欄位值；大型重機一種檢驗無法計算時另一種照常計算 |
+| `Domain/FirstInspectionDateTests.cs` | 間隔年數表的每一列和邊界：相隔剛好 1 年（+5）、剛好 2 年（+4）、剛好 3 年（+3）、剛好 4 年（+2）、逾 4 年（+1）；出廠日 2/29 |
 | `Domain/RuleTableCoverageTests.cs` | 車種 × 檢驗種類 × 車齡區間，沒有重疊、沒有缺口；有填和沒填指定檢驗日期 |
-| `Domain/PlateNormalizerTests.cs`、`VehicleValidatorTests.cs`、`DisplacementBracketsTests.cs` | 正規化、輸入驗證、級距對照 |
-| `Application/*HandlerTests.cs` | 每個 handler 一個測試檔，用 `Fakes/` 的假 Repository 和查詢服務；列表排序；名單比對 |
+| `Domain/PlateNormalizerTests.cs`、`VehicleValidatorTests.cs`、`DisplacementBracketsTests.cs` | 正規化（含正規化後為空）、輸入驗證和檢查順序、級距對照 |
+| `Application/*HandlerTests.cs` | 每個 handler 一個測試檔，用 `Fakes/` 的假 Repository、查詢服務和 `IUnitOfWork`；新增和修改的流程順序；列表排序；名單比對 |
 | `Infrastructure/KeyDerivationTests.cs` | 用固定的假測試向量（已排除在 gitleaks 之外）固定推導結果 |
-| `Infrastructure/AesGcmProtectorTests.cs`、`DataProtectionEncryptorTests.cs` | 加解密往返、用錯金鑰失敗、用途字串不同時失敗、存的不是明文 |
+| `Infrastructure/AesGcmProtectorTests.cs`、`DataProtectionEncryptorTests.cs` | 加解密往返、用錯金鑰失敗、用途字串不同時失敗、存的不是明文；解密器可以用 `(IServiceProvider)` 建構式建立 |
 | `Architecture/LayerDependencyTests.cs` | ArchUnitNET：Domain 不依賴其他層和框架；Application 不依賴 Infrastructure、Web、EF Core、ASP.NET |
-| `Fakes/` | 假的 Repository、查詢服務、`ICurrentUser`、`IEmailProtector` |
+| `Fakes/` | 假的 Repository、查詢服務、`IUnitOfWork`、`ICurrentUser`、`IEmailProtector` |
 
-測試案例名稱附上條號和修正日期（例如 `RTS44_111-04-01_汽車滿5年_每年一次`）。
+測試案例名稱附上條號和規則版本日期，日期格式是西元 `yyyyMMdd`，例如 `RTS44_20260101_汽車滿5年_每年一次`。規則測試的「今天」固定為 2026-11-19。
 
-#### 2.7 `tests/VehicleGo.IntegrationTests/`（xUnit + Testcontainers）
+#### 2.7 `tests/VehicleGo.IntegrationTests/`（xUnit v3 + Testcontainers）
 
 | 檔案 | 內容與理由 |
 | --- | --- |
-| `VehicleGo.IntegrationTests.csproj` | 參考 Web；xUnit、Testcontainers.PostgreSql、`Microsoft.AspNetCore.Mvc.Testing` |
+| `VehicleGo.IntegrationTests.csproj` | 參考 Web；xUnit v3、Testcontainers.PostgreSql、`Microsoft.AspNetCore.Mvc.Testing` |
 | `Infrastructure/PostgresFixture.cs` | 讀 `postgres-image.txt` 啟動 PostgreSQL，套用兩個 DbContext 的 migration |
-| `Infrastructure/TestLoginEndpoint.cs` | 測試用的登入端點：直接為指定的測試使用者發出真正的登入 cookie。只由 `VehicleGoFactory` 透過 `ConfigureTestServices` 加上的 startup filter 對應路由，正式的 Web 專案完全不含這段程式 |
-| `Infrastructure/VehicleGoFactory.cs` | `IntegrationTest` 環境；註冊 `TestLoginEndpoint`；記憶體中產生的 `MASTER_KEY`；可替換的名單；`FakeTimeProvider` |
+| `Infrastructure/TestLoginEndpoint.cs` | 測試用的登入端點：用模擬的 `sub`、`email`、`email_verified` 呼叫 `OidcSignInHandler`，通過時發出真正的登入 cookie。由 `VehicleGoFactory` 透過 `ConfigureTestServices` 加上的 startup filter 對應路由（`app.Map("/test/login", ...)`），正式的 Web 專案完全不含這段程式 |
+| `Infrastructure/VehicleGoFactory.cs` | `WebApplicationFactory<Program>`（.NET 10 自動產生 `public partial class Program`）；`IntegrationTest` 環境；註冊 `TestLoginEndpoint`；記憶體中產生的 `MASTER_KEY`；可替換的名單；`FakeTimeProvider`（只用來固定「今天」）；測試用的 logger provider，用來擷取 log |
 | `Infrastructure/TestClient.cs` | 透過測試登入端點取得**真正的** cookie，自動帶 XSRF token。所有整合測試都走真正的 cookie 驗證和每次請求的名單檢查，不使用假的登入處理器（作者決定） |
-| `AuthTests.cs` | `/api` 未登入回 401（不轉址）；移出名單後下一個請求 401；`returnUrl` 拒絕外部網址、`//` 和 `/\` 開頭；登出要 CSRF；同時第一次登入只建立一筆 |
-| `CsrfTests.cs` | 沒帶 header 回 `CSRF_INVALID`；未登入時先回 401 |
-| `VehicleTests.cs` | 1.5 節每個錯誤代碼至少一個測試；車牌重複（使用中、垃圾桶）；垃圾桶流程；滿 30 天的垃圾桶車輛在新增或修改時被刪除，其他查詢和操作時看不到；PUT 把車牌改成和過期垃圾桶車輛相同時成功（用 `FakeTimeProvider` 控制時間） |
-| `ConcurrencyTests.cs` | 舊版本回 `VEHICLE_MODIFIED`；沒帶版本回 `VALIDATION_FAILED`（欄位清單含 `version`） |
+| `AuthTests.cs` | `/api` 未登入回 401（不轉址）；不在名單上時被拒絕，`users` 表沒有新增資料；`email_verified = false` 時被拒絕；移出名單後下一個請求 401；`returnUrl` 拒絕外部網址、`//` 和 `/\` 開頭；登出要 CSRF；同一帳號同時多次第一次登入只建立一筆使用者 |
+| `CsrfTests.cs` | 沒帶 header 回 `CSRF_INVALID` ProblemDetails；未登入時先回 401 |
+| `VehicleTests.cs` | 1.5 節每個錯誤代碼至少一個測試；車牌重複（使用中、垃圾桶，附 `trashedVehicleId`）；垃圾桶流程；30 天清除：直接把資料庫裡的 `deleted_at` 改成 31 天前，確認新增或修改時被刪除、其他查詢和操作時看不到、PUT 把車牌改成和它相同時成功 |
+| `ConcurrencyTests.cs` | 舊版本回 `VEHICLE_MODIFIED`；沒帶版本回 `VALIDATION_FAILED`（`errors` 含 `version`） |
 | `VehicleLimitTests.cs` | 第 51 台被擋下並附數量；有 49 台時同時送出兩筆新增，只有一筆成功、另一筆回 `VEHICLE_LIMIT_REACHED` |
-| `IsolationTests.cs` | 使用者 A 對 B 的每個車輛和垃圾桶端點都回 404；`/api/me` 只讀寫自己 |
-| `LoggingTests.cs` | `LICENCE_DATE_MISMATCH` 只在新增或修改時寫 |
-| `HealthTests.cs` | `/health/live`、`/health/ready` 回傳 SHA |
+| `IsolationTests.cs` | 使用者 A 對 B 的每個車輛和垃圾桶端點都回 404；`/api/vehicles`、`/api/trash` 不包含 B 的資料；A 可以登錄和 B 相同的車牌；`/api/me` 只讀寫自己 |
+| `LoggingTests.cs` | `LICENCE_DATE_MISMATCH`、`INSPECTION_UNCOMPUTABLE` 只在新增或修改時寫，欄位不含車牌 |
+| `HealthTests.cs` | `/health/live`、`/health/ready` 回傳 `gitSha` |
 
 #### 2.8 `web/`（Vue 3 + TypeScript + Vite + Vue Router + Element Plus）
 
 | 檔案 | 內容與理由 |
 | --- | --- |
-| `package.json` | scripts：`dev`、`build`、`typecheck`（`vue-tsc --noEmit`）、`test:unit`（Vitest） |
+| `package.json`、`package-lock.json` | scripts：`dev`、`build`、`typecheck`（`vue-tsc --noEmit`）、`test:unit`（Vitest）；lock 檔供 `npm ci` 使用 |
 | `.nvmrc` | 固定 Node 版本，Dockerfile 和 CI 用同一版本 |
-| `vite.config.ts` | dev proxy：`/api`、`/signin-oidc`；Vitest 設定 |
-| `tsconfig.json`、`index.html`、`src/main.ts`、`src/App.vue` | 專案骨架；只註冊用到的 Element Plus 元件 |
+| `vite.config.ts` | 從 `vitest/config` import `defineConfig`；dev proxy：`/api`、`/signin-oidc`（不設 `changeOrigin`，否則從 5173 登入時 Google 的 redirect URI 會對不上）；`unplugin-vue-components` 加 `ElementPlusResolver`，只註冊用到的 Element Plus 元件 |
+| `tsconfig.json` | 只用一個檔案，`include` `src/**/*.ts`、`src/**/*.vue`（不要用 `"files": []` 加 references，否則 `vue-tsc --noEmit` 不會檢查任何檔案） |
+| `index.html`、`src/main.ts`、`src/App.vue` | 專案骨架 |
 | `src/router.ts` | 路由：`/login`、`/not-allowed`、`/vehicles`、`/vehicles/new`、`/vehicles/:id`、`/trash`、`/settings` |
-| `src/api/client.ts` | `fetch` 包裝：帶 `X-XSRF-TOKEN`；401 導向登入頁；`CSRF_INVALID` 重新取得 token 後重試一次 |
+| `src/api/client.ts` | `fetch` 包裝：帶 `X-XSRF-TOKEN`；401 導向登入頁；`CSRF_INVALID` 重新呼叫 `/api/me` 取得 token 後重試一次 |
 | `src/api/types.ts` | 1.4 節的資料型別 |
 | `src/composables/useCurrentUser.ts` | 模組層級的使用者與曆法狀態（不用 Pinia） |
-| `src/dates/calendar.ts` | 民國／西元換算、每月天數、年份範圍；日期當成年月日三個數字處理，不使用 JavaScript `Date` |
-| `src/dates/calendar.spec.ts` | 成功標準 4 的 Vitest 測試 |
+| `src/dates/calendar.ts` | 見下方日期規格；日期當成年月日三個數字處理，不使用 JavaScript `Date` |
+| `src/dates/calendar.spec.ts` | G9-4 的 Vitest 測試（見下方最少案例） |
 | `src/components/DateSelect.vue` | 年、月、日三個下拉選單（Element Plus `el-select`） |
 | `src/components/InspectionBadge.vue` | 依 `status`、`basis`、`estimated` 顯示 G5 的文字、顏色和標示（`estimated` 為 true 時一律顯示推算標示） |
 | `src/components/Disclaimer.vue` | 免責聲明（文字見 The Problem 一節），列表上方和車輛詳細頁各顯示一次 |
-| `src/pages/LoginPage.vue`、`NotAllowedPage.vue`、`VehicleListPage.vue`、`VehicleFormPage.vue`、`TrashPage.vue`、`SettingsPage.vue` | 各頁面；錯誤代碼對應繁體中文訊息 |
+| `src/pages/LoginPage.vue`、`NotAllowedPage.vue`、`VehicleListPage.vue`、`VehicleFormPage.vue`、`TrashPage.vue`、`SettingsPage.vue` | 各頁面；錯誤代碼對應繁體中文訊息。`VehicleFormPage`（`/vehicles/:id`）就是車輛詳細頁：同時顯示檢驗項目和免責聲明 |
+
+**日期規格（`calendar.ts`、`DateSelect.vue`）：**
+*   **年份範圍：** 出廠日期、原發照日期：1950 年到今年；指定檢驗日期：1950 年到今年 + 2 年（配合 `LICENCE_DATE_TOO_FAR`）。
+*   **日不存在時：** 改了年或月之後，原本的日不存在時，自動改成該月最後一天（例如 3/31 改成 2 月變成 2/28 或 2/29）。
+*   **顯示格式：** 月、日補零。民國 `115/11/19`（年不補零，例如 `99/03/05`）；西元 `2026/11/19`。
+*   **`calendar.spec.ts` 最少案例：** 民國 1 年 = 西元 1912 年；民國 113 年 2 月有 29 天、民國 114 年 2 月有 28 天；民國和西元互相換算後回到原值；3/31 改成 2 月時變成月底；兩種顯示格式。
 
 ### Verification Plan
 
-*   **建置：** `dotnet build VehicleGo.sln`；`npm ci && npm run build`（在 `web/`）；`docker compose build`。
+*   **建置：** `dotnet build VehicleGo.slnx`；`npm ci && npm run build`（在 `web/`）；`./deploy.sh`（含 `docker compose build`）。
 *   **單元測試：** `dotnet test tests/VehicleGo.UnitTests`；`npm run test:unit`。
 *   **整合測試：** `dotnet test tests/VehicleGo.IntegrationTests`（需要 Docker）。
 *   **靜態檢查：** `TreatWarningsAsErrors`；`npm run typecheck`；`scripts/check-secrets.sh`；`gitleaks git`。
 *   **測試覆蓋率：** 不設數字門檻；以成功標準列出的案例為準。規則引擎（Domain）的每條規則和每個邊界都要有案例。
-*   **手動驗證：** 用 Chrome 或 Firefox 開 `http://localhost:8080`，走過 Critical User Journeys 的 CUJ 1–12，含 4b、4c（把系統時間或 `TimeProvider` 固定在 2026-11-19，比對 CUJ 3、4、4b、4c、5、6、12 寫出的確切檢驗期間）。
+*   **CUJ 的確切日期：** 由 G9-1 的單元測試比對（「今天」固定為 2026-11-19），不靠手動驗證。
+*   **手動驗證：** 用 Chrome 或 Firefox 開 `http://localhost:8080`，只檢查畫面：狀態文字標籤和顏色；推算標示、「依行照指定檢驗日期」標示；免責聲明的位置；兩種排序；各錯誤代碼的中文訊息；登入、垃圾桶、曆法切換流程（CUJ 1、2、7–11）。
 
 --------------------------------------------------------------------------------
 
