@@ -1,5 +1,9 @@
 # 第 8 階段：Intermediate Zoom Out 報告
 
+**Status:** resolved（2026-11-19）
+
+**作者決定（逐項確認）：** Z8-M1 選 (a)：只在新增和修改車輛時清除，拿掉登入和啟動時的清除；Z8-M2 選 (b)：維持加密，改寫 ALT-F2、ALT-F4 的理由和風險表；Z8-N1、Z8-N2、Z8-N4 接受；Z8-N3 在 ALT-F6 補上保留的理由。1.2 節 `LICENCE` 規則那一列也補上 L − 6 個月的推算期間。已套用到設計文件。
+
 *   **審查對象：** `docs/designs/vehicle_management.md`（全文 1078 行）
 *   **審查者：** egm-zoom-out（zoom-out-standard），對照 `zoom_out_report.md`（第 5 階段）、`goldfish_review_report.md`、`goldfish_review_report_r2.md`
 *   **日期：** 2026-11-19
