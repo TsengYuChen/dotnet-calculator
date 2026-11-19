@@ -78,7 +78,7 @@
 *   **B1 規則生效日與版本選擇：** 第一版只放現行規則。觸發：法規修正時，依過渡條款決定用哪個日期選規則。過渡條款目前沒有查到。
 *   **B2 分支安排與本機環境的角色：** `main` + `prod` 兩條分支，或只用 `main` 加 tag；本機是否存真實資料。觸發：第一次部署到 VPS 之前。
 
-### C. 審查者建議、作者尚未明確表態（本文件先採用，作者可否決）
+### C. 審查者建議（已逐項由作者確認）
 
 *   **C1（已決定）使用者 Email 加密存放：** 作者決定存，並採用「AES-GCM 加密 + HMAC 查詢雜湊」。
     *   兩把獨立金鑰放在 `.env`：`EMAIL_ENCRYPTION_KEY`、`EMAIL_LOOKUP_KEY`（各 32 bytes，Base64），不放資料庫，也不進 git。服務啟動時缺少或格式不對就直接失敗。
@@ -92,7 +92,7 @@
 *   **C4（已決定）** 狀態文字只陳述期間，不做判斷（例如「目前為可驗車期間（已驗車可忽略）」）。
 *   **C5（已決定）同時編輯檢查：** 第一版要做（作者決定）。用 PostgreSQL 的 `xmin` 當版本號：讀取車輛時 API 回傳 `version`；修改（PUT）時前端必須帶回 `version`，不一致就回傳 409，錯誤代碼 `VEHICLE_MODIFIED`，畫面提示「資料已被修改，請重新整理」；沒帶 `version` 回傳 400。丟進垃圾桶、還原、永久刪除不檢查版本，由車輛目前的狀態（在不在垃圾桶）決定能不能執行。整合測試要涵蓋版本不一致的情況。
 *   **C6（已決定）** 部署腳本 `deploy.sh`：`git pull` → `pg_dump` → `docker compose up -d --build`。
-*   **C7** Caddy 只在 VPS 啟用（Compose profile）。
+*   **C7（已決定）** Caddy 只在 VPS 啟用（Compose profile）。
 
 ## Critical User Journeys (CUJs)
 
