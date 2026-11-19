@@ -129,7 +129,7 @@
   - **被移除的使用者看到什麼：** SPA 收到 401 時導向登入頁；Google 登入後被名單擋下時，顯示「此帳號尚未開放使用」頁，不自動重新開始 Google 登入，避免無限循環。
 - **Data Protection 金鑰（作者決定）：** 存在 PostgreSQL，並用從主金鑰推導出的 Data Protection 金鑰以 AES-GCM 加密（自行實作 `IXmlEncryptor` / `IXmlDecryptor`，associated data 為 `dpkey:v1`）。資料庫備份單獨拿到也解不開；還原時需要同一份 `.env`。實作細節見第 15 節。
 - `/api` 未登入時回傳 401，不轉址（OIDC 預設會轉址到 Google，需要特別處理，見第 15 節）。Cookie 設定 `HttpOnly`、`Secure`（`CookieSecurePolicy.Always`）、`SameSite=Lax`。本機用 `http://localhost` 時，只保證 Chrome 和 Firefox 能登入（它們把 localhost 視為安全來源），網址固定為 `http://localhost:<固定 port>`，不要用 `127.0.0.1` 或區網 IP。
-- **CSRF：** 用 `XSRF-TOKEN` cookie 加上 `X-XSRF-TOKEN` header，所有非 GET 的 `/api` 請求都在 middleware 裡驗證（JSON API 不會自動檢查），並寫一個整合測試確認沒帶 header 的請求會被拒絕。
+- **CSRF：** 用 `XSRF-TOKEN` cookie 加上 `X-XSRF-TOKEN` header，所有非 GET 的 `/api` 請求都要驗證（JSON API 不會自動檢查），用框架內建的 `IAntiforgery` 實作（見第 15 節），並寫一個整合測試確認沒帶 header 的請求會被拒絕。
 - SPA 和 API 在同一個網域。開發時用 Vite proxy 轉發 `/api`、`/signin-oidc`、登入和登出端點；Vite proxy 預設保留 `Host`，所以 Google 要同時註冊 Vite 的 port 和 Compose 的 port 兩個 redirect URI。登出是 `POST`，也要經過 CSRF 檢查。
 - OIDC 失敗（`OnRemoteFailure`）時要寫 log、顯示錯誤頁，不要回 500。
 - Google 同意畫面設為「In production」。第一版只註冊本機的 redirect URI（Compose 和 Vite 開發伺服器兩個 `http://localhost:<port>/signin-oidc`，必須完全相符，包含 port）；VPS 的網址等部署 VPS 時再加。
@@ -149,7 +149,7 @@
 ### 10. 部署
 
 - **作者決定：第一版只部署在本機 Docker（Docker Compose），當作測試環境；測試沒問題才部署到正式的 VPS。** VPS 實際上是 k3s，Cloudflare 代理（橘色雲朵）+ 原點憑證；部署到 VPS 時要改寫成 Kubernetes 資源（Deployment、Service、Ingress／Traefik TLS Secret、migration Job、Secret、備份 CronJob），屆時再設計。為了日後好移植，所有設定（連線字串、金鑰、名單）一律從環境變數讀取：本機由 `.env` 提供，k3s 由 Secret 提供，程式不需要改。
-- **`docker compose up -d` 不會重建映像檔。** `git pull` 之後只執行 `up -d`，跑的還是舊程式，而且看起來一切正常。**作者決定：** 寫一個 `deploy.sh`，內容依序為：`git pull` → `pg_dump`（部署前備份）→ `docker compose up -d --build`。API 啟動時寫出 git commit SHA，`/health/live` 也回傳 SHA，用來確認現在跑的是哪一版。第四輪對本機版 `deploy.sh` 的修正（第一次執行時資料庫還沒啟動、SHA 怎麼進映像檔、本機執行 `git pull` 的問題）見第 15 節。
+- **`docker compose up -d` 不會重建映像檔。** `git pull` 之後只執行 `up -d`，跑的還是舊程式，而且看起來一切正常。**作者決定：** 寫一個 `deploy.sh`，內容依序為：`pg_dump`（部署前備份，資料庫還沒啟動時跳過）→ `docker compose up -d --build`；本機就是開發機，所以不執行 `git pull`（第四輪修正，見第 15 節）。API 啟動時寫出 git commit SHA，`/health/live` 也回傳 SHA，用來確認現在跑的是哪一版。第四輪對本機版 `deploy.sh` 的修正（第一次執行時資料庫還沒啟動、SHA 怎麼進映像檔、本機執行 `git pull` 的問題）見第 15 節。
 - **映像檔：** 一個 multi-stage Dockerfile（Node 建置 Vue → .NET publish → runtime 映像檔提供 API 和靜態檔），另外一個 migration bundle 的 target。
 - **Compose 服務：**
   - `db`：用 `pg_isready` 做 healthcheck。
@@ -169,7 +169,7 @@
 - 實際的值放在 `.env`，加進 `.gitignore`，只存在各台主機上。repo 裡只有 `.env.example`，範例 Email 一律用 `example.com`。
 - `docker-compose.yml` 只引用變數，例如 `${ALLOWED_EMAILS}`。
 - Google Client ID / Secret、資料庫密碼也都放進 `.env`。
-- CI 檢查：`.env` 被 git 追蹤時就失敗（`git ls-files .env`）；可以再加 gitleaks 之類的密鑰掃描。原本「出現非 `example.com` Email 就失敗」的檢查，會被 `noreply@`、lockfile、授權檔誤判，改成只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，並允許所有 RFC 2606 保留網域。
+- 密鑰檢查：CI 和 pre-commit hook 共用 `scripts/check-secrets.sh`（細節見第 15 節）：`.env`（含子資料夾）被 git 追蹤時失敗；只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域。第一版不加 gitleaks。
 
 ### 12. CI（作者決定：用 GitHub Actions 跑測試，不部署）
 
@@ -221,9 +221,9 @@
 - 臺中市政府地方稅務局：小客車使用牌照稅稅額表 https://www.tax.taichung.gov.tw/4499/4592/4593/4600/6069/normalPost
 - 民間整理（第一次定檢日計算）：https://www.dasun.com.tw/tw/cartest
 
-### 15. 第四輪審查的技術修正（待作者確認）
+### 15. 第四輪審查的技術修正（作者整批接受）
 
-以下是第四輪 7 位審查者提出、屬於「技術上的正確做法」的修正。它們不改變功能範圍，但會進入設計文件，所以列出來給作者確認。
+以下是第四輪 7 位審查者提出、屬於「技術上的正確做法」的修正，作者已整批接受。其中四項取代了先前的決定：CSRF 改用內建的 `IAntiforgery`；本機 `deploy.sh` 不執行 `git pull`；pre-commit hook 和 CI 共用同一支檢查腳本與規則；第一版不加 gitleaks。
 
 **登入與 OIDC**
 - `OpenIdConnectOptions.Scope` 預設包含 `profile`，要先 `Scope.Clear()` 再加 `openid`、`email`；設定 `ResponseType = "code"`（預設不是授權碼流程）、`GetClaimsFromUserInfoEndpoint = false`（Google 的 ID token 已含 `email`、`email_verified`）。
@@ -333,19 +333,11 @@
 - **部署：** 第一版只在本機 Docker（測試環境），手動執行 `deploy.sh`；VPS（k3s）部署和分支安排延後。
 - **CI：** GitHub Actions 只跑測試，雲端 runner、無 secrets。
 
-**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，金鑰由 `.env` 的 `MASTER_KEY` 推導；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `git pull` → `pg_dump` → `docker compose up -d --build`；第一版只在本機 Docker 部署，不用 Caddy，VPS（k3s）部署延後；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點；用 `AddOpenIdConnect` 接 Google（為了取得 `email_verified`：名單用 Email 比對，必須確認 Google 已驗證該帳號擁有這個信箱，否則可用未驗證的他人信箱註冊 Google 帳號冒用）；只申請 `openid email`，不申請 `profile`（畫面只顯示 Email）；Data Protection 金鑰存 PostgreSQL，並用從 `MASTER_KEY` 推導的金鑰加密：自行實作 `IXmlEncryptor` / `IXmlDecryptor`（AES-GCM），和 Email 加密共用同一個 AES-GCM 工具類別；金鑰缺少或格式不對時服務啟動失敗；測試涵蓋加解密往返、用錯金鑰解密失敗、資料庫裡存的不是明文。金鑰遺失時所有人需重新登入，資料不受影響。不採用憑證（`.pfx`）方式，以免多管理一個檔案；CSRF 用 `XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header，以 middleware 檢查所有非 GET 的 `/api` 請求，並測試沒帶 header 的請求會被拒絕；migration 只增不改，從第一次部署到正式 VPS 開始適用；之前只有本機測試資料時可以自由修改、清空重建；規則引擎輸出檢驗項目清單，只列該車種有的檢驗（汽車只有定期檢驗、燃油機車只有排氣定檢、大型重機兩者都有、電動機車列排氣定檢並標免檢）；級距清單只在規則引擎定義一份，前端透過需登入的 `GET /api/reference/displacement-brackets` 取得；規則的期間算法用 C# 型別或 enum 表示（以發照月日、以發照月份、每年兩次加 6 個月推算、免檢），打錯字在編譯時就失敗；CI 也建置前端（`npm ci && npm run build`、型別檢查、Vitest 換算測試），並在 `.env` 被 git 追蹤時失敗；另加本機 pre-commit hook：hook 腳本放在 repo 的 `.githooks/`，每次 clone 後執行一次 `git config core.hooksPath .githooks` 啟用，commit 前擋下 `.env` 和非 `example.com` 的 Email；`.gitignore` 從第一個 commit 就包含 `.env`。已知限制：hook 可用 `--no-verify` 略過，CI 檢查只能事後發現，一旦外洩 `MASTER_KEY` 要更換。
+**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，金鑰由 `.env` 的 `MASTER_KEY` 推導；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `pg_dump` → `docker compose up -d --build`（本機不執行 `git pull`）；第一版只在本機 Docker 部署，不用 Caddy，VPS（k3s）部署延後；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點；用 `AddOpenIdConnect` 接 Google（為了取得 `email_verified`：名單用 Email 比對，必須確認 Google 已驗證該帳號擁有這個信箱，否則可用未驗證的他人信箱註冊 Google 帳號冒用）；只申請 `openid email`，不申請 `profile`（畫面只顯示 Email）；Data Protection 金鑰存 PostgreSQL，並用從 `MASTER_KEY` 推導的金鑰加密：自行實作 `IXmlEncryptor` / `IXmlDecryptor`（AES-GCM），和 Email 加密共用同一個 AES-GCM 工具類別；金鑰缺少或格式不對時服務啟動失敗；測試涵蓋加解密往返、用錯金鑰解密失敗、資料庫裡存的不是明文。金鑰遺失時所有人需重新登入，資料不受影響。不採用憑證（`.pfx`）方式，以免多管理一個檔案；CSRF 用 `XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header，以內建 `IAntiforgery` 檢查所有非 GET 的 `/api` 請求，並測試沒帶 header 的請求會被拒絕；migration 只增不改，從第一次部署到正式 VPS 開始適用；之前只有本機測試資料時可以自由修改、清空重建；規則引擎輸出檢驗項目清單，只列該車種有的檢驗（汽車只有定期檢驗、燃油機車只有排氣定檢、大型重機兩者都有、電動機車列排氣定檢並標免檢）；級距清單只在規則引擎定義一份，前端透過需登入的 `GET /api/reference/displacement-brackets` 取得；規則的期間算法用 C# 型別或 enum 表示（以發照月日、以發照月份、每年兩次加 6 個月推算、免檢），打錯字在編譯時就失敗；CI 也建置前端（`npm ci && npm run build`、型別檢查、Vitest 換算測試），並在 `.env` 被 git 追蹤時失敗；另加本機 pre-commit hook：hook 腳本放在 repo 的 `.githooks/`，每次 clone 後執行一次 `git config core.hooksPath .githooks` 啟用，commit 前執行和 CI 相同的 `scripts/check-secrets.sh`（擋下 `.env`，以及特定檔案類型裡 RFC 2606 保留網域以外的 Email）；`.gitignore` 從第一個 commit 就包含 `.env`。已知限制：hook 可用 `--no-verify` 略過，CI 檢查只能事後發現，一旦外洩 `MASTER_KEY` 要更換。
 
-**審查建議、本版已採用（作者沒有逐項確認，可以否決）：** 第 15 節「第四輪審查的技術修正」整節。
+**審查建議、本版已採用（作者沒有逐項確認，可以否決）：** 無（第 15 節已由作者整批接受）。
 
-**待作者決定（第四輪審查提出，一次一題）：**
-
-1. ~~行照上的指定檢驗日期~~ — 已決定：加選填欄位（見第 3 節）。
-2. ~~本機測試環境的加密範圍~~ — 已決定：第一版就做 Email 加密和 Data Protection 金鑰加密（作者決定；理由：等 VPS 有資料後再補，需要資料遷移和重新測試）。
-3. ~~金鑰數量~~ — 已決定：一把 `MASTER_KEY`，HKDF 推導三把（見第 15 節）。
-4. ~~推算日期的影響~~ — 已決定：維持變色和排序，文件註明「只會提早」原則不適用於推算項目（見第 3 節）。
-5. ~~排氣量必填~~ — 已決定：維持必填（作者決定，接受驗證、check constraint、級距 API 和日後資料遷移的成本）。
-6. ~~每人車輛數上限~~ — 已決定：50 台，含垃圾桶（見第 5 節）。
-7. **第 15 節的技術修正：** 整批接受，或逐項確認？
+**待作者決定：** 無。第四輪提出的 7 題都已決定：加選填的行照指定檢驗日期；第一版就做加密；一把 `MASTER_KEY`；推算項目照樣變色排序並註明例外；排氣量維持必填；每人上限 50 台含垃圾桶；第 15 節整批接受。
 
 **延後決定（有觸發條件）：**
 
