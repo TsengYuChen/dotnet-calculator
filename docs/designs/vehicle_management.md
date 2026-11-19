@@ -87,7 +87,7 @@
 ### B. 延後決定（有觸發條件）
 
 *   **B1 規則生效日與版本選擇（含原 A4 過渡條款）：** 第一版只放現行規則。觸發：法規修正時，依當時的過渡條款決定用哪個日期判斷新舊規則（今天、原發照日或出廠日）。
-*   **B2 正式 VPS 部署（作者決定維持延後，2026-11-19）：** 作者還沒確定會部署到正式機，這個系統可能只會是實驗專案。VPS 是 k3s，前面有 Cloudflare 代理和原點憑證；分支安排、反向代理與 forwarded headers、自動部署、正式備份排程、更換金鑰的流程，都等真的決定部署時再處理，也可能永遠不做。
+*   **B2 正式 VPS 部署（作者決定維持延後，2026-11-19）：** 作者還沒確定會部署到正式機，這個系統可能只會是實驗專案。VPS 是 k3s，前面有 Cloudflare 代理和原點憑證；分支安排、反向代理與 forwarded headers、自動部署、正式備份排程、獨立的 migration 步驟（migration bundle）、更換金鑰的流程，都等真的決定部署時再處理，也可能永遠不做。
 
 ### C. 本文件後續章節要由作者決定的事項
 
@@ -225,7 +225,7 @@
 - **Repository 與查詢服務：** 實作 Application 的三個介面（`IVehicleRepository`、`IUserRepository`、`IVehicleQueries`）。垃圾桶相關查詢和車輛數量只關閉「已刪除」過濾器，不能關閉擁有者過濾器。
 - **加密：** 從 `MASTER_KEY` 用 HKDF 推導三把金鑰；共用的 AES-GCM 工具；`IEmailProtector` 的實作。
 - **Data Protection：** 獨立的小 DbContext 存放登入金鑰，加上自行實作的 XML 加密器和解密器。
-- **migration：** EF Core migration，以 migration bundle 的形式在 Compose 的 `migrate` 服務執行。
+- **migration：** EF Core migration（`AppDbContext` 和 Data Protection 的 DbContext 各一組），第一版在 `api` 啟動時自動套用（審查第 5 階段 N4）。部署到 VPS 時，要改成獨立的 migration 步驟（多個執行個體同時在啟動時套用 migration 會互相衝突），列在 B2。
 
 **VehicleGo.Web（參考 Application；組裝相依性時參考 Infrastructure）**
 - **Controllers（作者決定採用 Controller）：** `AuthController`（登入、登出）、`MeController`（讀取使用者、修改偏好）、`VehiclesController`（列表、單台、新增、修改、丟進垃圾桶、還原、永久刪除）、`TrashController`（垃圾桶列表）、`ReferenceController`（級距清單）。每個 action 只呼叫一個 handler，handler 用 `[FromServices]` 注入在 action 方法上，避免建構子變長。
@@ -322,10 +322,9 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 | 服務 | 說明 |
 | --- | --- |
 | `db` | PostgreSQL，用 `pg_isready` 做健康檢查 |
-| `migrate` | 執行 migration bundle，等 `db` 健康後才跑，`restart: "no"` |
-| `api` | Web 專案（含 Vue 靜態檔），等 `migrate` 成功後才啟動，`restart: unless-stopped` |
+| `api` | Web 專案（含 Vue 靜態檔），等 `db` 健康後才啟動，啟動時套用 migration，`restart: unless-stopped` |
 
-部署腳本 `deploy.sh`：先 `pg_dump`（資料庫還沒啟動時跳過），再 `docker compose up -d --build`，並把 git SHA 傳進映像檔。
+部署腳本 `deploy.sh`：匯出 git SHA，執行 `docker compose up -d --build`。本機資料庫可以隨時清空重建，所以第一版不在部署時備份（審查第 5 階段 N4）；備份和 migration bundle 等部署 VPS 時再設計。
 
 ### 8. 測試對應
 
@@ -791,7 +790,7 @@ Calculate(vehicle, today):
 
 | 檔案 | 新增／修改 | 內容與理由 |
 | --- | --- | --- |
-| `.gitignore` | 新增 | 第一個 commit 就包含 `.env`、`**/.env`、`backups/`、`bin/`、`obj/`、`node_modules/`、`web/dist/`；防止密鑰和建置產物進 git |
+| `.gitignore` | 新增 | 第一個 commit 就包含 `.env`、`**/.env`、`bin/`、`obj/`、`node_modules/`、`web/dist/`；防止密鑰和建置產物進 git |
 | `.editorconfig` | 新增 | 統一縮排和換行，讓 diff 乾淨 |
 | `global.json` | 新增 | 固定 .NET 10 SDK 版本，Dockerfile 和 CI 用同一版本 |
 | `Directory.Build.props` | 新增 | 所有專案共用：`Nullable=enable`、`TreatWarningsAsErrors=true`、`InvariantGlobalization=false`（NFKC 需要） |
@@ -799,16 +798,16 @@ Calculate(vehicle, today):
 | `VehicleGo.sln` | 新增 | 方案，包含 4 個 `src` 專案和 2 個 `tests` 專案 |
 | `postgres-image.txt` | 新增 | PostgreSQL 映像檔標籤（例如 `postgres:17.x`），Compose 和 Testcontainers 都讀它，CI 不依賴 `.env` |
 | `.env.example` | 新增 | 列出所有環境變數和範例值（Email 一律用 `example.com`），附 `openssl rand -base64 32` 產生 `MASTER_KEY` 的說明 |
-| `docker-compose.yml` | 新增 | `db`、`migrate`、`api` 三個服務；只引用 `${...}` 變數；`build.args: GIT_SHA`；log 輪替；`api` port 固定 |
-| `Dockerfile` | 新增 | multi-stage：Node 建置 `web/` → .NET publish `VehicleGo.Web`（含 `wwwroot`）→ runtime（含 tzdata，非 chiseled／Alpine）；另一個 target 產生 migration bundle |
-| `deploy.sh` | 新增 | `db` 在執行時才 `pg_dump` 到 `backups/<時間>.sql`；匯出 `GIT_SHA`（有未 commit 修改時加 `-dirty`）；`docker compose up -d --build`；不執行 `git pull` |
+| `docker-compose.yml` | 新增 | `db`、`api` 兩個服務；只引用 `${...}` 變數；`build.args: GIT_SHA`；log 輪替；`api` port 固定 |
+| `Dockerfile` | 新增 | multi-stage：Node 建置 `web/` → .NET publish `VehicleGo.Web`（含 `wwwroot`）→ runtime（含 tzdata，非 chiseled／Alpine） |
+| `deploy.sh` | 新增 | 匯出 `GIT_SHA`（有未 commit 修改時加 `-dirty`）；`docker compose up -d --build`；不執行 `git pull` |
 | `scripts/check-secrets.sh` | 新增 | `.env`（含子資料夾）被追蹤就失敗；掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml` 中 RFC 2606 保留網域以外的 Email；可傳入「只檢查暫存檔」參數供 hook 使用 |
 | `.githooks/pre-commit` | 新增（可執行） | 先跑 `check-secrets.sh`（暫存檔），再跑 `gitleaks git --staged`；gitleaks 沒安裝或版本和 `.gitleaks-version` 不同時失敗並提示安裝方式 |
 | `.gitleaks.toml` | 新增 | `[extend] useDefault = true`；排除 HKDF 測試向量等已知的假值 |
 | `.gitleaks-version`、`.gitleaks-version.sha256` | 新增 | gitleaks 版本號（不含 `v`）和下載檔的 SHA-256 |
 | `.gitleaksignore` | 新增 | 空檔；日後處理過的誤判或已更換的密鑰 fingerprint |
 | `.github/workflows/ci.yml` | 新增 | job：`backend`（建置、`UnitTests`、`IntegrationTests`）、`frontend`（`npm ci`、`typecheck`、`test:unit`、`build`）、`check-secrets`、`gitleaks`（`fetch-depth: 0` 掃完整歷史）；`permissions: contents: read`；觸發 `pull_request` 和 push 任何分支 |
-| `README.md` | 新增 | 啟用 hook（`git config core.hooksPath .githooks`）、建立 `.env`、`deploy.sh`、還原與清空重建指令、Google OAuth redirect URI 設定 |
+| `README.md` | 新增 | 啟用 hook（`git config core.hooksPath .githooks`）、建立 `.env`、`deploy.sh`、清空重建指令（`docker compose down -v`）、Google OAuth redirect URI 設定 |
 
 #### 2.2 `src/VehicleGo.Domain/`
 
@@ -878,7 +877,7 @@ Calculate(vehicle, today):
 | 檔案 | 內容與理由 |
 | --- | --- |
 | `VehicleGo.Web.csproj` | 參考 Application、Infrastructure |
-| `Program.cs` | 組裝相依性；JSON console log；ProblemDetails；健康檢查；靜態檔與 SPA fallback（排除 `/api`、`/signin-oidc`）；`--healthcheck` 參數 |
+| `Program.cs` | 組裝相依性；啟動時套用兩個 DbContext 的 migration；JSON console log；ProblemDetails；健康檢查；靜態檔與 SPA fallback（排除 `/api`、`/signin-oidc`）；`--healthcheck` 參數 |
 | `appsettings.json` | 不含任何密鑰；log 等級 |
 | `Startup/StartupValidation.cs` | 啟動時檢查 `MASTER_KEY`、Asia/Taipei、`ALLOWED_EMAILS`（空的時候警告並全部拒絕） |
 | `Auth/AuthenticationSetup.cs` | cookie 為預設 scheme；OIDC（Scope 只有 `openid email`、`ResponseType=code`、`MapInboundClaims=false`、`SaveTokens=false`）；`OnTokenValidated`、`OnValidatePrincipal`、`OnRedirectToLogin`／`OnRedirectToAccessDenied`、`OnRemoteFailure` |
