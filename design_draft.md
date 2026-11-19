@@ -96,6 +96,7 @@
 *   **C3（作者已決定，2026-11-19）** 使用案例用自己定義的 handler 介面組織：Application 定義 `ICommandHandler<TCommand>`、`IQueryHandler<TQuery, TResult>`，每個使用案例一個實作類別，用 ASP.NET Core 內建 DI 註冊，API 端點注入對應的 handler。不使用 MediatR 等外部套件；需要共同處理時用 decorator 實作。
 *   **C4（作者已決定，2026-11-19）測試專案：** 兩個。`UnitTests` 放不需要資料庫的測試（Domain 規則引擎、Application handler、Infrastructure 的加密與車牌正規化）和架構測試；`IntegrationTests` 放 API + PostgreSQL（Testcontainers）的整合測試和資料隔離測試。已知取捨：架構測試沒辦法在 CI 上設成獨立的必要檢查。
 *   **C6（作者已決定，2026-11-19）** API 用 Controller，不用 Minimal API。
+*   **C7（2026-11-19）技術選擇：** .NET 10（EF Core 10 具名查詢過濾器需要）；前端 TypeScript + Vue Router（CI 要求 `typecheck`）。以下由作者決定：前端狀態管理用 Vue 內建 composable（不用 Pinia）；UI 元件庫用 Element Plus；後端測試框架用 xUnit；架構測試用 ArchUnitNET；結構化 log 用 .NET 內建的 JSON console logger（不用 Serilog）。
 *   **C5 命名（機械性選擇，先採用以下預設，作者可否決）：** 方案和根命名空間 `VehicleGo`（取自 repo 名稱）；專案 `VehicleGo.Domain`、`VehicleGo.Application`、`VehicleGo.Infrastructure`、`VehicleGo.Web`、`VehicleGo.UnitTests`、`VehicleGo.IntegrationTests`；資料夾 `src/`（後端）、`tests/`（後端測試）、`web/`（Vue 前端）。
 
 ## Critical User Journeys (CUJs)
