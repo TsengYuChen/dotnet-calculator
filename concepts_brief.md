@@ -264,6 +264,27 @@
   - 版本寫在 `.gitleaks-version`，格式為不含 `v` 的版本號（例如 `8.21.2`），和 `gitleaks version` 的輸出比對。兩邊共用同一份 `.gitleaks.toml`，裡面必須有 `[extend] useDefault = true`，否則自訂設定會取代內建規則，只剩排除清單。
 - CI 的 job 名稱（包括 `check-secrets` 和 `gitleaks` 兩個 job）和 npm script 名稱（`typecheck`、`test:unit`）在設計文件裡固定，分支保護才能指定必要檢查。
 
+### 16. 後端架構：Clean Architecture + SOLID（作者決定）
+
+後端採用 Clean Architecture，程式設計遵守 SOLID 原則。依賴方向只能由外往內：
+
+| 層 | 內容 | 可以依賴 |
+| --- | --- | --- |
+| Domain | 車輛、車種、級距、狀態等實體和值物件；**驗車規則引擎**（第 2 節的純函式和規則表）；車牌正規化 | 無（不引用 EF Core、ASP.NET） |
+| Application | 使用案例（新增／修改車輛、垃圾桶、列表排序、車輛上限、行照日期不一致的判斷與 log 決策、`LoginAdmission` 名單檢查）；定義對外的介面（資料存取、時間 `TimeProvider`、加密） | Domain |
+| Infrastructure | EF Core + PostgreSQL（DbContext、具名查詢過濾器、migration、`xmin`）、AES-GCM 與 HKDF 加密、Data Protection 金鑰存放與加密器 | Application、Domain |
+| Web（API） | ASP.NET Core 端點、OIDC 與 cookie 設定、CSRF、ProblemDetails、健康檢查、提供 Vue 靜態檔 | Application、Infrastructure（只在組裝相依性時） |
+
+- 每一層是一個獨立的 .NET 專案，依賴方向由專案參考強制；加一個架構測試（例如檢查 Domain 專案沒有參考 EF Core 或 ASP.NET），違反時 CI 失敗。
+- 第 2 節原本的「獨立的規則引擎 library」放在 Domain 層，單元測試不需要資料庫，和原本的設計一致。
+- Vue 前端不在 Clean Architecture 的範圍內，只透過 API 溝通。
+
+**要注意的風險（避免為了架構而增加程式碼）：** 第一版的目標是小雛形。Clean Architecture 和 SOLID 常被誤用成「每個類別都要一個介面、每個動作都要一層包裝」，會讓程式量增加好幾倍。以下幾個做法有不只一種合理答案，留到 `/egm-draft` 第 5 步請作者選擇：
+- Application 層存取資料時，是直接使用 EF Core 的 DbContext 介面，還是另外包一層 Repository（EF Core 本身已經是 Repository + Unit of Work，再包一層常常只是轉呼叫）。
+- 使用案例要不要用 MediatR 之類的訊息分派套件，還是一般的服務類別。
+- 測試專案怎麼切分（Domain 單元測試、Application 單元測試、API 整合測試、架構測試）。
+- 方案和資料夾的命名。
+
 ## Goals vs. Non-Goals
 
 * **In-Scope Goals:**
@@ -274,6 +295,7 @@
   - 列表可依出廠日或最後期限排序；進入檢驗期間時日期變色；每個狀態都有文字標籤。
   - 日期可用民國或西元輸入和顯示（個人設定，預設民國）。
   - 時間點以 UTC 存成 `timestamptz`；日曆日期存成 `date`；「今天」和畫面顯示都用台北時間。
+  - 後端採用 Clean Architecture，遵守 SOLID（見第 16 節）。
   - 介面只有繁體中文；第一版用 Docker Compose 部署在本機（測試環境），手動執行部署腳本；VPS 部署延後。
   - **成功標準：** GitHub Actions CI 中以下測試全部通過：
     1. 規則計算的單元測試，每個案例的名稱附上法規條號和修正日期，至少包含：有填行照指定檢驗日期時以它為準並往後推、兩者不一致時診斷資訊的不一致旗標和公式日期，以及邊界日期（剛好滿 5 年和 10 年、2/29 發照、月底加 6 個月）、出廠和發照相隔剛好 1、2、3、4 年和 5 年以上的第一次定檢、排氣定檢以月份計算（含 1 月和 12 月跨年）、10 年切換前後、`estimated` 旗標、大型重機同時回傳兩種檢驗、電動機車排氣定檢為免檢、`CAR_ELECTRIC` 的汽車仍有定期檢驗。
@@ -344,6 +366,7 @@
 
 - **範圍：** 只做使用者功能；不通知、不顯示逾期、沒有管理頁、不做帳號刪除；四種車種（自用小客車、一般燃油機車、大型重型機車、電動機車）。
 - **架構：** ASP.NET Core Web API + Vue SPA + PostgreSQL，Docker Compose；同網域 cookie 登入。
+- **後端架構：** Clean Architecture（Domain、Application、Infrastructure、Web 四層，依賴由外往內，用專案參考和架構測試強制），遵守 SOLID；驗車規則引擎在 Domain 層。Repository 包裝、MediatR、測試專案切分、命名留給 `/egm-draft` 第 5 步由作者選擇（見第 16 節）。
 - **規則：** 寫在獨立的 C# 規則引擎 library 裡；車齡從完整出廠日期算（暫定，待真實行照比對）；汽車和大型重機的定期檢驗以原發照日（月日）為基準、前後一個月；機車排氣定檢以原發照月份為基準、前後一個月（以月計）；滿 10 年後的第二次期間以 + 6 個月推算並標示；不做假日順延；讀取時即時計算。
 - **日期：** 出廠存完整日期；時間點用 UTC `timestamptz`；日曆日期用 `date`；「今天」用台北時間；民國／西元是存在資料庫的個人設定，預設民國。
 - **車輛：** 新增、修改、垃圾桶（還原、永久刪除，不自動清空）；車牌含垃圾桶唯一；每人最多 50 台（含垃圾桶）；汽車和大型重機可選填行照指定檢驗日期，有填時以它為準。
