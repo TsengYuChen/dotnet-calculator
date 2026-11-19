@@ -119,14 +119,14 @@
 *   **When**：新增一台自用小客車，排氣量選「1201–1800cc」，出廠日期 103/05/01，原發照日期 103/08/20，行照指定檢驗日期不填。
 *   **Then**：列表上這台車的「定期檢驗」顯示 **116/01/20 – 116/03/20**，狀態「下次期間」，旁邊標示「推算日期，請以行照為準」，日期不變色。
     *   計算過程：出廠到發照相隔未滿 1 年，第一次指定日期 = 108/08/20；113/05/01 滿 10 年，之後每年兩次；今年的指定日期 115/08/20 的期間（115/07/20–115/09/20）已經結束；下一個是推算的 115/08/20 + 6 個月 = 116/02/20，期間 116/01/20–116/03/20。
-    *   API 回應：`kind = PERIODIC`、`status = UPCOMING`、`earliestDate = 2027-01-20`、`deadline = 2027-03-20`、`basis = FORMULA`、`estimated = true`。
+    *   API 回應：`kind = PERIODIC`、`status = UPCOMING`、`earliestDate = 2027-01-20`、`deadline = 2027-03-20`、`basis = FORMULA`、`estimated = true`、`ruleId = RTS44-CAR-AGE10UP`。
 
 ### CUJ 4：填了行照指定檢驗日期的汽車
 
 *   **Given**：今天是 2026-11-19。使用者有一台自用小客車，出廠日期 108/06/01，原發照日期 108/07/15（車齡約 7 年），行照指定檢驗日期原本沒填。
 *   **When**：使用者在編輯頁填入行照上的指定檢驗日期 116/03/10 並儲存。
 *   **Then**：定期檢驗顯示 **116/02/10 – 116/04/10**，狀態「下次期間」，旁邊標示「依行照指定檢驗日期」。
-    *   API 回應：`kind = PERIODIC`、`status = UPCOMING`、`earliestDate = 2027-02-10`、`deadline = 2027-04-10`、`basis = LICENCE`、`estimated = false`。
+    *   API 回應：`kind = PERIODIC`、`status = UPCOMING`、`earliestDate = 2027-02-10`、`deadline = 2027-04-10`、`basis = LICENCE`、`estimated = false`、`ruleId = RTS44-CAR-LICENCE`。
     *   公式算出的指定日期是每年 7/15（第一次 113/07/15），和行照的 3/10 月日不同，而且車齡未滿 10 年，不比對 + 6 個月，所以判定不一致：儲存時伺服器寫一筆 `LICENCE_DATE_MISMATCH` log，畫面仍以行照日期為準。
 
 ### CUJ 5：新增一台大型重機
@@ -134,14 +134,14 @@
 *   **Given**：今天是 2026-11-19。使用者已登入。
 *   **When**：新增一台大型重型機車，排氣量選「551cc 以上」，出廠日期 108/09/01，原發照日期 108/11/25。
 *   **Then**：列表上這台車有兩行，兩行都在檢驗期間內，日期都變色：
-    *   「定期檢驗」：**115/10/25 – 115/12/25**，狀態「檢驗期間內」。第一次指定日期 113/11/25（相隔未滿 1 年），今年是 115/11/25；車齡未滿 10 年，沒有推算期間。API：`kind = PERIODIC`、`status = IN_WINDOW`、`earliestDate = 2026-10-25`、`deadline = 2026-12-25`、`basis = FORMULA`、`estimated = false`。
-    *   「排氣定檢」：**115/10/01 – 115/12/31**，狀態「檢驗期間內」。原發照月份 11 月，期間是前一個月 1 日到後一個月最後一天；出廠已滿 5 年。API：`kind = EXHAUST`、`status = IN_WINDOW`、`earliestDate = 2026-10-01`、`deadline = 2026-12-31`、`basis = FORMULA`、`estimated = false`。
+    *   「定期檢驗」：**115/10/25 – 115/12/25**，狀態「檢驗期間內」。第一次指定日期 113/11/25（相隔未滿 1 年），今年是 115/11/25；車齡未滿 10 年，沒有推算期間。API：`kind = PERIODIC`、`status = IN_WINDOW`、`earliestDate = 2026-10-25`、`deadline = 2026-12-25`、`basis = FORMULA`、`estimated = false`、`ruleId = RTS44-HMC-AGE5TO10`。
+    *   「排氣定檢」：**115/10/01 – 115/12/31**，狀態「檢驗期間內」。原發照月份 11 月，期間是前一個月 1 日到後一個月最後一天；出廠已滿 5 年。API：`kind = EXHAUST`、`status = IN_WINDOW`、`earliestDate = 2026-10-01`、`deadline = 2026-12-31`、`basis = FORMULA`、`estimated = false`、`ruleId = APC40-MC-ANNUAL`。
 
 ### CUJ 6：新增一台電動機車
 
 *   **Given**：今天是 2026-11-19。使用者已登入。
 *   **When**：新增一台電動機車，出廠日期 110/03/01，原發照日期 110/03/15。表單上不顯示排氣量和行照指定檢驗日期欄位。
-*   **Then**：列表顯示「排氣定檢：免檢」，不變色。API：`kind = EXHAUST`、`status = EXEMPT`、`earliestDate` 和 `deadline` 為 null。依最後期限排序時，這台車排在有日期的車後面。
+*   **Then**：列表顯示「排氣定檢：免檢」，不變色。API：`kind = EXHAUST`、`status = EXEMPT`、`earliestDate` 和 `deadline` 為 null、`ruleId = APC40-EMC-EXEMPT`。依最後期限排序時，這台車排在有日期的車後面。
 
 ### CUJ 7：誤刪後還原
 
@@ -650,15 +650,15 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 
 | 車種 | 種類 | 規則 ID | 內容 |
 | --- | --- | --- | --- |
-| `CAR` | `PERIODIC` | `RTS44-CAR-AGE0TO5` | 未滿 5 年：顯示第一次定檢期間，狀態 `UPCOMING` |
-| `CAR` | `PERIODIC` | `RTS44-CAR-AGE5TO10` | 每年一次，指定日期前後一個月（以日計） |
-| `CAR` | `PERIODIC` | `RTS44-CAR-AGE10UP` | 每年兩次：指定日期 + 6 個月推算（`estimated: true`） |
-| `CAR` | `PERIODIC` | `RTS44-CAR-LICENCE` | 有填行照指定檢驗日期時使用 |
+| `CAR` | `PERIODIC` | `RTS44-CAR-AGE0TO5` | 今天距出廠未滿 5 年：顯示第一次定檢期間（狀態依今天判斷，第一個期間可能在滿 5 年前一個月內就開始，這時是 `IN_WINDOW`） |
+| `CAR` | `PERIODIC` | `RTS44-CAR-AGE5TO10` | 今天滿 5 年、未滿 10 年：每年一次，指定日期前後一個月（以日計） |
+| `CAR` | `PERIODIC` | `RTS44-CAR-AGE10UP` | 今天滿 10 年：每年兩次，指定日期 + 6 個月推算（`estimated: true`） |
+| `CAR` | `PERIODIC` | `RTS44-CAR-LICENCE` | 有填行照指定檢驗日期時一律使用（不看車齡） |
 | `HEAVY_MC` | `PERIODIC` | `RTS44-HMC-AGE0TO5`、`RTS44-HMC-AGE5TO10`、`RTS44-HMC-AGE10UP`、`RTS44-HMC-LICENCE` | 同汽車 |
-| `FUEL_MC`、`HEAVY_MC` | `EXHAUST` | `APC40-MC-AGE0TO5`、`APC40-MC-ANNUAL` | 未滿 5 年顯示第一次期間；滿 5 年起每年一次，原發照月份前一個月 1 日到後一個月最後一天（以月計） |
+| `FUEL_MC`、`HEAVY_MC` | `EXHAUST` | `APC40-MC-AGE0TO5`、`APC40-MC-ANNUAL` | 今天距出廠未滿 5 年用 `AGE0TO5`，顯示第一次期間；滿 5 年起用 `ANNUAL`，每年一次，原發照月份前一個月 1 日到後一個月最後一天（以月計） |
 | `ELECTRIC_MC` | `EXHAUST` | `APC40-EMC-EXEMPT` | 免檢 |
 
-每條規則附法規出處（法規名稱、條號、修正日期），並有 `EffectiveFrom` 欄位（填目前條文的修正日期）。規則引擎透過 `RuleTable.Current()` 取得現行規則，第一版這個函式永遠回傳全部規則，不寫任何過渡邏輯；日後法規修改時，只要新增規則並調整這個函式（審查第 5 階段 N7）。`RTS44` = 道路交通安全規則第 44 條；`APC40` = 空氣污染防制法第 40 條。
+每條規則附法規出處（法規名稱、條號、修正日期），並有 `EffectiveFrom` 欄位（填目前條文的修正日期）。規則引擎透過 `RuleTable.Current()` 取得現行規則，第一版這個函式永遠回傳全部規則，不寫任何過渡邏輯；日後法規修改時，只要新增規則並調整這個函式（審查第 5 階段 N7）。**規則 ID 的選法（作者決定，審查第 6 階段 #1）：** 有填行照指定檢驗日期時用 `LICENCE`；否則依**今天**距出廠日的車齡選 `AGE0TO5`／`AGE5TO10`／`AGE10UP`（排氣定檢為 `AGE0TO5`／`ANNUAL`）。狀態一律依「今天是否在顯示的期間內」判斷，和規則 ID 無關。已知限制：車齡接近 10 年時，顯示的期間可能已經是滿 10 年後的推算期間，但規則 ID 仍是 `AGE5TO10`；這只影響規則 ID 的標示，日期本身不受影響。`RTS44` = 道路交通安全規則第 44 條；`APC40` = 空氣污染防制法第 40 條。
 
 #### 1.3 規則引擎演算法（虛擬碼）
 
@@ -682,6 +682,7 @@ Calculate(vehicle, today):
                 take windows whose deadline >= manufactureDate + 5y
     choose earliest window whose deadline >= today
     status = today in [start, deadline] (含兩端) ? IN_WINDOW : UPCOMING
+    ruleId = basis == LICENCE ? *-LICENCE : 依 age(manufactureDate, today) 選 AGE0TO5 / AGE5TO10 / AGE10UP（排氣定檢：AGE0TO5 / ANNUAL）
     if no window or invalid input → UNCOMPUTABLE（reason: NO_RULE 或 INVALID_INPUT）
     diagnostics（只給伺服器）: 有填 L 時，比對同年度公式日期的月日（滿 10 年時也比對 +6 個月），不一致 → mismatch = true、formulaDate
 ```
@@ -893,7 +894,7 @@ Calculate(vehicle, today):
 | 檔案 | 內容與理由 |
 | --- | --- |
 | `VehicleGo.UnitTests.csproj` | 參考 Domain、Application、Infrastructure；xUnit、ArchUnitNET、`Microsoft.Extensions.TimeProvider.Testing` |
-| `Domain/InspectionCalculatorCarTests.cs` | 汽車：未滿 5 年、剛好 5 年、10 年切換前後、2/29 發照、月底 + 6 個月、`estimated` |
+| `Domain/InspectionCalculatorCarTests.cs` | 汽車：CUJ 3–4 的確切期間；未滿 5 年（含滿 5 年前一個月內已進入期間、狀態 `IN_WINDOW`、規則 `AGE0TO5`）、剛好 5 年、10 年切換前後、2/29 發照、月底 + 6 個月、`estimated` |
 | `Domain/InspectionCalculatorMotorcycleTests.cs` | 燃油機車和大型重機的排氣定檢（月份計算、1 月和 12 月跨年）；大型重機兩種檢驗；電動機車免檢 |
 | `Domain/InspectionCalculatorLicenceDateTests.cs` | 行照日期為準、往後推、未滿 5 年也用行照日期、不一致的診斷 |
 | `Domain/FirstInspectionDateTests.cs` | 出廠到發照相隔剛好 1、2、3、4 年和 5 年以上 |
