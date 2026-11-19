@@ -127,6 +127,15 @@
 
 **作者決定：第一版只讓名單上的帳號登入。** 名單是 Email 清單，放在 Docker Compose 的環境變數裡（例如 `ALLOWED_EMAILS`），改名單後重新啟動服務即可。Google OAuth 驗證成功後，後端確認 `email_verified = true`，並把 Email 轉成小寫和名單比對。不在名單上的帳號會看到「此帳號尚未開放使用」，資料庫也不會建立這個使用者。名單只決定「誰能登入」，登入後仍以 `sub` 識別使用者。整合測試要涵蓋：名單內可登入、名單外被拒、`email_verified = false` 被拒。
 
+**名單和密鑰不能進 git（作者決定）。** 實際的 Email 名單是個資，不能出現在 repo 裡：
+
+- **`.env`**：放實際的值，加進 `.gitignore`，永遠不 commit，只存在部署主機上。Docker Compose 啟動時會自動讀取同一個資料夾裡的 `.env`。
+- **`.env.example`**：要 commit 的範本，只寫欄位名稱和範例值，例如 `ALLOWED_EMAILS=user1@example.com,user2@example.com`。
+- **`docker-compose.yml`**：只引用變數（`ALLOWED_EMAILS: ${ALLOWED_EMAILS}`），不寫實際的值。
+- Google OAuth Client ID / Client Secret、資料庫密碼也照同樣的方式放進 `.env`。
+- 測試程式和文件裡只用 `example.com` 的範例 Email（RFC 2606 保留給範例用的網域），不能用真實的 Email。
+- 建議在 CI 加一個檢查：repo 裡出現 `example.com` 以外的 Email 時就失敗。
+
 這個決定讓「不做帳號刪除、垃圾桶不自動清空」在雛形階段比較說得過去：使用者都是作者認識的人，有人要刪資料時可以人工處理。之後要開放註冊時，以下審查建議要先做：
 
 原本的問題：開放任何 Google 帳號註冊，加上不做帳號刪除、垃圾桶不自動清空，代表個資（車牌 + 帳號）一旦進來就刪不掉。審查者提出的低成本補救方式：
@@ -220,7 +229,7 @@
 6. 車牌存原樣和正規化兩個欄位，`(owner_id, normalized_plate)` 唯一索引不加刪除條件；衝突時回傳 409，錯誤代碼為 `PLATE_EXISTS_ACTIVE` / `PLATE_EXISTS_IN_TRASH`。
 7. 擁有者過濾和軟刪除過濾必須分開；別人的車一律回傳 404；隔離測試涵蓋所有垃圾桶端點。
 8. Data Protection 金鑰持久化；API 未登入回傳 401；啟用 CSRF 防護；Google 同意畫面設為 In production。
-8a. **登入名單：** 環境變數裡的 Email 清單，比對前要求 `email_verified = true` 並轉小寫；名單外的帳號不建立使用者。
+8a. **登入名單：** 環境變數裡的 Email 清單，比對前要求 `email_verified = true` 並轉小寫；名單外的帳號不建立使用者。實際名單和所有密鑰放在不進 git 的 `.env`，repo 裡只有 `.env.example`（範例 Email 一律用 `example.com`）。
 9. Migration 用一次性的 Compose 服務執行；主機上排程 `pg_dump` 備份。
 10. **出廠存完整日期**，車齡以日期計算；**檢驗期間以原發照日為基準**（機車若條文規定以月份為準，就改用月份計算）。
 11. 「逾期」功能（含登記已驗車）留到之後的版本。免責說明是否加入，待作者確認。
