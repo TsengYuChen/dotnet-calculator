@@ -86,7 +86,7 @@
 
 ### B. 延後決定（有觸發條件）
 
-*   **B1 規則生效日與版本選擇（含原 A4 過渡條款）：** 第一版只放現行規則。觸發：法規修正時，依當時的過渡條款決定用哪個日期判斷新舊規則（今天、原發照日或出廠日）。
+*   **B1 規則生效日與版本選擇（含原 A4 過渡條款）：** 第一版只放現行規則。觸發：法規修正時，依當時的過渡條款決定用哪個日期判斷新舊規則（今天、原發照日或出廠日）。第一版已預留每條規則的 `EffectiveFrom` 欄位和 `RuleTable.Current()` 選擇函式，但不寫過渡邏輯。
 *   **B2 正式 VPS 部署（作者決定維持延後，2026-11-19）：** 作者還沒確定會部署到正式機，這個系統可能只會是實驗專案。VPS 是 k3s，前面有 Cloudflare 代理和原點憑證；分支安排、反向代理與 forwarded headers、自動部署、正式備份排程、獨立的 migration 步驟（migration bundle）、更換金鑰的流程，都等真的決定部署時再處理，也可能永遠不做。
 
 ### C. 本文件後續章節要由作者決定的事項
@@ -658,7 +658,7 @@ Google 回呼 /signin-oidc → OnTokenValidated → LoginAdmission
 | `FUEL_MC`、`HEAVY_MC` | `EXHAUST` | `APC40-MC-AGE0TO5`、`APC40-MC-ANNUAL` | 未滿 5 年顯示第一次期間；滿 5 年起每年一次，原發照月份前一個月 1 日到後一個月最後一天（以月計） |
 | `ELECTRIC_MC` | `EXHAUST` | `APC40-EMC-EXEMPT` | 免檢 |
 
-每條規則附法規出處（法規名稱、條號、修正日期）。`RTS44` = 道路交通安全規則第 44 條；`APC40` = 空氣污染防制法第 40 條。
+每條規則附法規出處（法規名稱、條號、修正日期），並有 `EffectiveFrom` 欄位（填目前條文的修正日期）。規則引擎透過 `RuleTable.Current()` 取得現行規則，第一版這個函式永遠回傳全部規則，不寫任何過渡邏輯；日後法規修改時，只要新增規則並調整這個函式（審查第 5 階段 N7）。`RTS44` = 道路交通安全規則第 44 條；`APC40` = 空氣污染防制法第 40 條。
 
 #### 1.3 規則引擎演算法（虛擬碼）
 
@@ -827,7 +827,7 @@ Calculate(vehicle, today):
 | `Inspections/InspectionItem.cs` | 一個檢驗項目（給 API 用的欄位） |
 | `Inspections/InspectionDiagnostics.cs` | 只給伺服器用：`UNCOMPUTABLE` 原因、行照日期不一致旗標、公式日期 |
 | `Inspections/InspectionCalculator.cs` | 1.3 節的純函式 |
-| `Inspections/Rules/InspectionRule.cs`、`PeriodCalculation.cs`、`LegalCitation.cs`、`RuleTable.cs` | 1.2 節的規則表，算法用 enum 表示 |
+| `Inspections/Rules/InspectionRule.cs`、`PeriodCalculation.cs`、`LegalCitation.cs`、`RuleTable.cs` | 1.2 節的規則表，算法用 enum 表示；每條規則有 `EffectiveFrom`；`RuleTable.Current()` 回傳現行規則 |
 | `Inspections/Rules/FirstInspectionDate.cs` | 第一次定檢日（第 14 節 2a） |
 
 #### 2.3 `src/VehicleGo.Application/`
