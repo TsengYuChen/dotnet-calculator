@@ -140,7 +140,7 @@
 - **回滾：** 第一版的 migration 只能「增加」（新增可為 null 或有預設值的欄位、新增資料表），不能在同一版裡改名或刪除。回滾的做法是：在 `main` revert → 合併到 `prod` → 重新部署。只有在 migration 本身必須撤銷時，才還原部署前的 dump。
 - **備份：** 主機上排程 `docker compose exec db pg_dump`，保留 7 份每日、4 份每週備份，dump 和 `.env` 要複製到 VPS 以外的地方。第一批使用者進來前，先實際做一次還原測試。
 - **`prod` 只能從 `main` 合併：** GitHub 的分支保護設不出「只能從某個分支合併」。要用一個必要的 CI 檢查：PR 目標是 `prod` 時，來源不是 `main` 就失敗。
-- **兩個分支、兩個環境的必要性**也被質疑（zoom-out）：一個人開發，`main` + `prod` 兩條長期分支、兩份 `.env`、兩個 redirect URI 是額外負擔。替代做法：只用 `main`，VPS 部署某個 tag。見待決事項 F。
+- **兩個分支、兩個環境的必要性**也被質疑（zoom-out）：一個人開發，`main` + `prod` 兩條長期分支、兩份 `.env`、兩個 redirect URI 是額外負擔。替代做法：只用 `main`，VPS 部署某個 tag。**作者決定：先記成待定，真正要部署時再決定。** 兩種做法的 CI 完全相同；差別只在「上線」是開 `main` → `prod` 的 PR（需要額外的來源分支檢查），還是在 `main` 打 tag。
 - **本機環境的角色：** 本機如果也存真實資料，就需要和 VPS 一樣的備份和密鑰管理；如果只是測試用，就用另一份測試用的名單。
 
 ### 11. 密鑰與名單不進 git（作者決定）
@@ -152,7 +152,7 @@
 
 ### 12. CI（作者決定：用 GitHub Actions 跑測試，不部署）
 
-- 觸發：`pull_request`，以及 push 到 `main`、`prod`。
+- 觸發：`pull_request`，以及 push 到任何分支（`branches: ['**']`），開發分支（例如 `spec/egm`）不用合併到 `main` 也會跑測試。
 - 只用 GitHub 雲端 runner（`ubuntu-latest`，內建 Docker，Testcontainers 可以直接用），不用 self-hosted runner。
 - workflow 不需要任何 secrets，權限設為唯讀（`permissions: contents: read`），不使用 `pull_request_target`。
 - 除了 .NET 測試，也要跑 `npm ci && npm run build`（以及型別檢查和民國／西元換算的單元測試），避免壞掉的前端被合併進 `prod`。
@@ -240,13 +240,12 @@
 - **狀態顯示：** 只有進入檢驗期間才變色；驗車日期旁加免責聲明。
 - **產品定位：** 「個人車輛管理系統」，驗車是第一個功能，之後加保養、加油紀錄；第一版範圍不變。
 - **登入：** Google 登入 + 環境變數 Email 名單，每次請求都重新檢查名單；名單和密鑰放在不進 git 的 `.env`。
-- **部署：** 手動；`main` 在本機、`prod` 在 VPS（第二輪質疑，見 F）。
+- **部署：** 手動執行 `deploy.sh`；分支安排（`main` + `prod`，或只用 `main` 加 tag）待部署時再決定。
 - **CI：** GitHub Actions 只跑測試，雲端 runner、無 secrets。
 
 **審查建議、本版已採用（作者可以否決）：** 名單檢查放在獨立服務並直接測試；`AddOpenIdConnect`；只申請 `openid email`；Data Protection 金鑰存 PostgreSQL；CSRF 用 XSRF cookie + header；forwarded headers 信任 Compose 網路；`deploy.sh`（`pg_dump` → `up -d --build`）；Caddy 用 Compose profile；migration 只增不改；狀態文字只陳述期間；規則計算方式用型別表示；CI 也建置前端、檢查 `.env` 沒被追蹤；第一版不做 `xmin`。
 
-**待作者決定（一次一題）：**
+**待作者決定：** 無。第二輪的待決事項 A–F 都已處理（F 延到部署時決定）。
 
-- **F. 分支：** 維持 `main`（本機）+ `prod`（VPS）兩條分支，還是只用 `main`，VPS 部署 tag？
 
 **法規核對（寫測試前必做）：** 道路交通安全規則第 44 條（汽車定期檢驗）的現行條文和修正日期；環境部機車排氣定期檢驗規定（基準是發照日或發照月份）；大型重型機車的排氣量門檻與檢驗規則；使用牌照稅法的汽車級距；一般機車的排氣定檢頻率是否與排氣量無關；相關修法的過渡條款用哪個日期判斷新舊規則（決定之後是否要做規則生效日）。測試案例名稱附上條號和修正日期。
