@@ -169,7 +169,7 @@
 - 實際的值放在 `.env`，加進 `.gitignore`，只存在各台主機上。repo 裡只有 `.env.example`，範例 Email 一律用 `example.com`。
 - `docker-compose.yml` 只引用變數，例如 `${ALLOWED_EMAILS}`。
 - Google Client ID / Secret、資料庫密碼也都放進 `.env`。
-- 密鑰檢查：CI 和 pre-commit hook 共用 `scripts/check-secrets.sh`（細節見第 15 節）：`.env`（含子資料夾）被 git 追蹤時失敗；只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域。第一版不加 gitleaks。
+- 密鑰檢查：CI 和 pre-commit hook 共用 `scripts/check-secrets.sh`（細節見第 15 節）：`.env`（含子資料夾）被 git 追蹤時失敗；只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域。**gitleaks 在 hook 和 CI 都加（作者決定，取代「第一版不加」）**：補上 `check-secrets.sh` 抓不到的缺口（密鑰被直接寫進設定檔或程式）。hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊用同一份 commit 進 repo 的 `.gitleaks.toml`（含誤判排除）；gitleaks 版本固定寫在 repo 裡；開發機沒安裝 gitleaks 時 hook 直接失敗並提示安裝方式；CI 直接執行 gitleaks 程式，不用官方 GitHub Action。
 
 ### 12. CI（作者決定：用 GitHub Actions 跑測試，不部署）
 
@@ -223,7 +223,7 @@
 
 ### 15. 第四輪審查的技術修正（作者整批接受）
 
-以下是第四輪 7 位審查者提出、屬於「技術上的正確做法」的修正，作者已整批接受。其中四項取代了先前的決定：CSRF 改用內建的 `IAntiforgery`；本機 `deploy.sh` 不執行 `git pull`；pre-commit hook 和 CI 共用同一支檢查腳本與規則；第一版不加 gitleaks。
+以下是第四輪 7 位審查者提出、屬於「技術上的正確做法」的修正，作者已整批接受。其中四項取代了先前的決定：CSRF 改用內建的 `IAntiforgery`；本機 `deploy.sh` 不執行 `git pull`；pre-commit hook 和 CI 共用同一支檢查腳本與規則；**gitleaks 在 hook 和 CI 都加（作者決定，取代「第一版不加」）**：補上 `check-secrets.sh` 抓不到的缺口（密鑰被直接寫進設定檔或程式）。hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊用同一份 commit 進 repo 的 `.gitleaks.toml`（含誤判排除）；gitleaks 版本固定寫在 repo 裡；開發機沒安裝 gitleaks 時 hook 直接失敗並提示安裝方式；CI 直接執行 gitleaks 程式，不用官方 GitHub Action。
 
 **登入與 OIDC**
 - `OpenIdConnectOptions.Scope` 預設包含 `profile`，要先 `Scope.Clear()` 再加 `openid`、`email`；設定 `ResponseType = "code"`（預設不是授權碼流程）、`GetClaimsFromUserInfoEndpoint = false`（Google 的 ID token 已含 `email`、`email_verified`）。
@@ -251,7 +251,7 @@
 - git SHA 用 `--build-arg GIT_SHA=$(git rev-parse HEAD)` 傳進映像檔（`.git` 不在 build context 裡）。
 - 健康檢查端點統一為 `/health/live`、`/health/ready`；容器 healthcheck 用 API 自帶的檢查指令呼叫 `/health/ready`。
 - PostgreSQL 映像檔版本寫在一個 commit 進 repo 的檔案裡（不能放 `.env`，CI 沒有 `.env`），Compose 和 Testcontainers 都讀它。.NET SDK 用 `global.json`、Node 用 `.nvmrc` 固定版本，Dockerfile 和 CI 用同一個版本。
-- 密鑰檢查統一成一支腳本 `scripts/check-secrets.sh`：pre-commit hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊規則相同（只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域）。原本寫的 `git ls-files .env` 不管有沒有追蹤都會成功，要改成「輸出不是空的就失敗」，並涵蓋子資料夾裡的 `.env`。hook 腳本要用 `git update-index --chmod=+x` 設定可執行。第一版不加 gitleaks。
+- 密鑰檢查統一成一支腳本 `scripts/check-secrets.sh`：pre-commit hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊規則相同（只掃 `*.cs`、`*.ts`、`*.vue`、`*.md`、`*.yml`，允許所有 RFC 2606 保留網域）。原本寫的 `git ls-files .env` 不管有沒有追蹤都會成功，要改成「輸出不是空的就失敗」，並涵蓋子資料夾裡的 `.env`。hook 腳本要用 `git update-index --chmod=+x` 設定可執行。**gitleaks 在 hook 和 CI 都加（作者決定，取代「第一版不加」）**：補上 `check-secrets.sh` 抓不到的缺口（密鑰被直接寫進設定檔或程式）。hook 檢查暫存的檔案，CI 檢查整個 repo，兩邊用同一份 commit 進 repo 的 `.gitleaks.toml`（含誤判排除）；gitleaks 版本固定寫在 repo 裡；開發機沒安裝 gitleaks 時 hook 直接失敗並提示安裝方式；CI 直接執行 gitleaks 程式，不用官方 GitHub Action。
 - CI 的 job 名稱和 npm script 名稱（`typecheck`、`test:unit`）在設計文件裡固定，分支保護才能指定必要檢查。
 
 ## Goals vs. Non-Goals
