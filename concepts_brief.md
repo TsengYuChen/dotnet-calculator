@@ -238,9 +238,9 @@
 **加密與金鑰**
 - 共用的 AES-GCM 工具：`new AesGcm(key, tagSizeInBytes: 16)`、每次隨機 12 bytes nonce，儲存格式為「金鑰版本 1 byte + nonce + tag + 密文」，associated data 放用途字串（`email:v1`、`dpkey:v1`），避免兩種用途的密文互相替換。
 - Data Protection 的金鑰存在**獨立的小 DbContext**（只實作 `IDataProtectionKeyContext`，不套用擁有者過濾器），因為載入金鑰時沒有登入使用者。透過 `KeyManagementOptions.XmlEncryptor` 註冊加密器；解密器由框架依型別名稱建立，金鑰要從 DI 取得。呼叫 `SetApplicationName(...)` 固定應用程式名稱。用錯金鑰時，框架會默默產生新金鑰（所有人被登出），所以解密失敗要寫 Error 等級的 log，並加一個測試。
-- **一把主金鑰（作者決定）：** `.env` 只放一把 `MASTER_KEY`（32 bytes，Base64），用 HKDF-SHA256 依用途推導三把金鑰，推導標籤固定為 `email-enc/v1`、`email-hmac/v1`、`dataprotection/v1`。HKDF 參數：salt 為空、`info` 為標籤的 UTF-8 位元組、輸出 32 bytes。用一組明顯是假的測試向量（例如 32 個 0 bytes 的主金鑰，或 RFC 5869 的測試向量）固定推導結果，這組向量加進 `.gitleaks.toml` 的排除清單。密文開頭的 1 byte 金鑰版本 = 標籤版本（`v1` 為 1）。主金鑰缺少或格式不對就啟動失敗。產生方式寫在 `.env.example`：`openssl rand -base64 32`。只想換其中一把時，改該用途的版本標籤（例如 `email-enc/v2`）；主金鑰外洩時三把都要換。
+- **一把主金鑰（作者決定）：** `.env` 只放一把 `MASTER_KEY`（32 bytes，Base64），用 HKDF-SHA256 依用途推導三把金鑰，推導標籤固定為 `email-enc/v1`、`email-hmac/v1`、`dataprotection/v1`。HKDF 參數：salt 為空、`info` 為標籤的 UTF-8 位元組、輸出 32 bytes。用一組明顯是假的測試向量（例如 32 個 0 bytes 的主金鑰，或 RFC 5869 的測試向量）固定推導結果，這組向量加進 `.gitleaks.toml` 的排除清單。密文開頭的 1 byte 金鑰版本 = 標籤版本（`v1` 為 1）。主金鑰缺少或格式不對就啟動失敗。產生方式寫在 `.env.example`：`openssl rand -base64 32`。
 - 測試時在記憶體裡隨機產生金鑰。repo 裡除了上述明顯是假的 HKDF 測試向量，不放任何固定金鑰。
-- **換金鑰的做法：待作者決定**（見 Key Decisions）。
+- **換金鑰（作者決定）：第一版不支援換金鑰。** `MASTER_KEY` 遺失或要更換時，本機直接清空資料庫重建（`docker compose down -v`）。不做 `MASTER_KEY_PREVIOUS`、重新加密指令。密文仍保留 1 byte 金鑰版本，之後要支援換金鑰時不必改資料格式。換金鑰的完整流程延到部署 VPS 時設計。
 
 **資料與 API**
 - 同時編輯：`uint Version` 對應 `xmin`（`[Timestamp]` / `IsRowVersion()`；`UseXminAsConcurrencyToken()` 已過時）。PUT 時要把用戶端送來的 `version` 設成 `OriginalValue` 再存檔，否則 EF 會拿剛讀出來的版本比對，檢查形同虛設。`DbUpdateConcurrencyException` 對應 409 `VEHICLE_MODIFIED`。加一個「送舊版本被擋」的測試。
@@ -357,13 +357,13 @@
 
 **待作者決定（一致性檢查提出，一次一題）：**
 
-1. **換金鑰的範圍：** 第一版要不要支援「換 `MASTER_KEY`」（舊金鑰 `MASTER_KEY_PREVIOUS` 備援解密、重寫 Email 欄位與查詢雜湊、一次性的重新加密指令、清掉舊的 Data Protection 金鑰），還是延到部署 VPS 時？本機只有測試資料，換金鑰可以直接清空資料庫重建。
+1. ~~換金鑰的範圍~~ — 已決定：第一版不支援，遺失或更換時清空資料庫重建；延到部署 VPS 時設計（見第 15 節）。
 2. **審查者建議否決、作者沒有表態的替代方案：** `AddGoogle`、JWT 存在 localStorage、ASP.NET Identity／Keycloak／Auth0／Duende BFF、拍行照 OCR。要以「作者否決（接受審查建議）」記錄，還是要重新考慮其中哪一項？
 
 **延後決定（有觸發條件）：**
 
 - **規則生效日與版本選擇** — 觸發：核對條文、確認過渡條款用哪個日期判斷時。見 Analysis 第 2 節。
-- **VPS（k3s）部署、分支安排、反向代理與 forwarded headers、自動部署（CD）、正式備份排程** — 觸發：決定要部署到 VPS 時。見 Analysis 第 10 節。
+- **VPS（k3s）部署、分支安排、反向代理與 forwarded headers、自動部署（CD）、正式備份排程、換金鑰流程** — 觸發：決定要部署到 VPS 時。見 Analysis 第 10 節。
 
 **前置工作（阻擋條件）：**
 
