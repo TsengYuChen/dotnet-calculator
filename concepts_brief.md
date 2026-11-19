@@ -115,7 +115,7 @@
 - **問題：把人從名單移除後，他仍然能登入。** 名單只在登入時檢查，而 Data Protection 金鑰已經持久化，舊的登入 cookie 在重新啟動後仍然有效，預設最長可以用 14 天。
 - **作者決定：每次請求都重新檢查名單。** 在 `CookieAuthenticationEvents.OnValidatePrincipal` 裡呼叫同一個 `LoginAdmission` 服務，不在名單上就呼叫 `RejectPrincipal()` 並清除 cookie，下一個請求就會被登出。
   - **比對的 Email 來自 cookie 裡的 claim**（登入時寫入），不查資料庫，所以每次請求只是一次記憶體比對。名單透過可替換的服務（例如 `IOptionsMonitor`）讀取，測試時可以改變。
-  - **使用者資料表也存 Email（建議，可否決）：** 存登入時驗證過、轉小寫的 Email，每次登入時更新，不設唯一。只用來在有人要求刪除資料時查詢，不拿來識別使用者（識別仍然用 `google_sub`）。log 裡則寫雜湊過的 Email：log 會被複製和保留得比較久，資料表則受備份和存取控制保護。
+  - **使用者資料表存 Email，加密存放（作者決定：AES-GCM 加密 + HMAC 查詢雜湊，兩把金鑰放 `.env`；細節見 design_draft.md C1）。** 原建議內容： 存登入時驗證過、轉小寫的 Email，每次登入時更新，不設唯一。只用來在有人要求刪除資料時查詢，不拿來識別使用者（識別仍然用 `google_sub`）。log 裡則寫雜湊過的 Email：log 會被複製和保留得比較久，資料表則受備份和存取控制保護。
   - **測試要經過真正的 cookie 機制：** 假的登入處理器會跳過 cookie 事件，測試會在沒執行真正程式的情況下通過。這個測試改用真正的 cookie scheme：在測試環境限定的登入端點發 cookie，接著從名單移除該 Email，確認下一個請求回傳 401。
   - **被移除的使用者看到什麼：** SPA 收到 401 時導向登入頁；Google 登入後被名單擋下時，顯示「此帳號尚未開放使用」頁，不自動重新開始 Google 登入，避免無限循環。
 - Data Protection 金鑰存在 PostgreSQL（`PersistKeysToDbContext`），`pg_dump` 會一起備份到。
