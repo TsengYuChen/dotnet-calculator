@@ -123,10 +123,10 @@
 - **問題：把人從名單移除後，他仍然能登入。** 名單只在登入時檢查，而 Data Protection 金鑰已經持久化，舊的登入 cookie 在重新啟動後仍然有效，預設最長可以用 14 天。
 - **作者決定：每次請求都重新檢查名單。** 在 `CookieAuthenticationEvents.OnValidatePrincipal` 裡呼叫同一個 `LoginAdmission` 服務，不在名單上就呼叫 `RejectPrincipal()` 並清除 cookie，下一個請求就會被登出。
   - **比對的 Email 來自 cookie 裡的 claim**（登入時寫入），不查資料庫，所以每次請求只是一次記憶體比對。名單透過可替換的服務讀取，測試時可以改變。**注意：** 環境變數只在容器啟動時讀取，改了 `.env` 之後要執行 `docker compose up -d api` 重建容器才會生效（`docker compose restart` 不會重讀 `.env`）。
-  - **使用者資料表存 Email，加密存放（作者決定）。** 存登入時驗證過的 Email，正規化為去頭尾空白、轉小寫，每次登入時更新。欄位：`email_encrypted bytea`（格式：1 byte 金鑰版本 + 12 bytes 隨機 nonce + 16 bytes tag + 密文，AES-GCM，associated data 為用途字串 `email:v1`）、`email_lookup_hash bytea`（`HMAC-SHA256(EMAIL_LOOKUP_KEY, 正規化 Email)`，一般索引，不設唯一）。只用來在有人要求刪除資料時查詢，不拿來識別使用者（識別仍然用 `google_sub`），也不拿來比對名單。log 裡寫 `email_lookup_hash` 的前 8 碼（有金鑰的 HMAC，不是單純的 SHA-256，避免用名單反查）。
+  - **使用者資料表存 Email，加密存放（作者決定）。** 存登入時驗證過的 Email，正規化為去頭尾空白、轉小寫，每次登入時更新。欄位：`email_encrypted bytea`（格式：1 byte 金鑰版本 + 12 bytes 隨機 nonce + 16 bytes tag + 密文，AES-GCM，associated data 為用途字串 `email:v1`）、`email_lookup_hash bytea`（`HMAC-SHA256(Email 查詢金鑰, 正規化 Email)`，一般索引，不設唯一）。只用來在有人要求刪除資料時查詢，不拿來識別使用者（識別仍然用 `google_sub`），也不拿來比對名單。log 裡寫 `email_lookup_hash` 的前 8 碼（有金鑰的 HMAC，不是單純的 SHA-256，避免用名單反查）。
   - **測試要經過真正的 cookie 機制：** 假的登入處理器會跳過 cookie 事件，測試會在沒執行真正程式的情況下通過。這個測試改用真正的 cookie scheme：在「整合測試」限定的登入端點發 cookie（只在 `ASPNETCORE_ENVIRONMENT=IntegrationTest` 時註冊；本機 Docker 部署用 `Production`，所以這個端點不存在；另一個測試確認所有非 `IntegrationTest` 的環境都沒有它），接著從名單移除該 Email，確認下一個請求回傳 401。
   - **被移除的使用者看到什麼：** SPA 收到 401 時導向登入頁；Google 登入後被名單擋下時，顯示「此帳號尚未開放使用」頁，不自動重新開始 Google 登入，避免無限循環。
-- **Data Protection 金鑰（作者決定）：** 存在 PostgreSQL，並用 `.env` 的 `DATA_PROTECTION_KEY` 以 AES-GCM 加密（自行實作 `IXmlEncryptor` / `IXmlDecryptor`，associated data 為 `dpkey:v1`）。資料庫備份單獨拿到也解不開；還原時需要同一份 `.env`。實作細節見第 15 節。
+- **Data Protection 金鑰（作者決定）：** 存在 PostgreSQL，並用從主金鑰推導出的 Data Protection 金鑰以 AES-GCM 加密（自行實作 `IXmlEncryptor` / `IXmlDecryptor`，associated data 為 `dpkey:v1`）。資料庫備份單獨拿到也解不開；還原時需要同一份 `.env`。實作細節見第 15 節。
 - `/api` 未登入時回傳 401，不轉址（OIDC 預設會轉址到 Google，需要特別處理，見第 15 節）。Cookie 設定 `HttpOnly`、`Secure`（`CookieSecurePolicy.Always`）、`SameSite=Lax`。本機用 `http://localhost` 時，只保證 Chrome 和 Firefox 能登入（它們把 localhost 視為安全來源），網址固定為 `http://localhost:<固定 port>`，不要用 `127.0.0.1` 或區網 IP。
 - **CSRF：** 用 `XSRF-TOKEN` cookie 加上 `X-XSRF-TOKEN` header，所有非 GET 的 `/api` 請求都在 middleware 裡驗證（JSON API 不會自動檢查），並寫一個整合測試確認沒帶 header 的請求會被拒絕。
 - SPA 和 API 在同一個網域。開發時用 Vite proxy 轉發 `/api`、`/signin-oidc`、登入和登出端點；Vite proxy 預設保留 `Host`，所以 Google 要同時註冊 Vite 的 port 和 Compose 的 port 兩個 redirect URI。登出是 `POST`，也要經過 CSRF 檢查。
@@ -234,9 +234,9 @@
 **加密與金鑰**
 - 共用的 AES-GCM 工具：`new AesGcm(key, tagSizeInBytes: 16)`、每次隨機 12 bytes nonce，儲存格式為「金鑰版本 1 byte + nonce + tag + 密文」，associated data 放用途字串（`email:v1`、`dpkey:v1`），避免兩種用途的密文互相替換。
 - Data Protection 的金鑰存在**獨立的小 DbContext**（只實作 `IDataProtectionKeyContext`，不套用擁有者過濾器），因為載入金鑰時沒有登入使用者。透過 `KeyManagementOptions.XmlEncryptor` 註冊加密器；解密器由框架依型別名稱建立，金鑰要從 DI 取得。呼叫 `SetApplicationName(...)` 固定應用程式名稱。用錯金鑰時，框架會默默產生新金鑰（所有人被登出），所以解密失敗要寫 Error 等級的 log，並加一個測試。
-- 三把金鑰都在啟動時檢查，缺少或格式不對就啟動失敗。產生方式寫在 `.env.example`：`openssl rand -base64 32`。
+- **一把主金鑰（作者決定）：** `.env` 只放一把 `MASTER_KEY`（32 bytes，Base64），用 HKDF-SHA256 依用途推導三把金鑰，推導標籤固定為 `email-enc/v1`、`email-hmac/v1`、`dataprotection/v1`，並用測試固定推導結果。主金鑰缺少或格式不對就啟動失敗。產生方式寫在 `.env.example`：`openssl rand -base64 32`。只想換其中一把時，改該用途的版本標籤（例如 `email-enc/v2`）；主金鑰外洩時三把都要換。
 - 測試時在記憶體裡隨機產生金鑰，repo 裡不放任何測試用的固定金鑰，密鑰掃描才不會誤判。
-- 換金鑰：Email 加密金鑰支援 `EMAIL_ENCRYPTION_KEY_PREVIOUS` 讀取舊資料，使用者下次登入時用新金鑰重寫。
+- 換金鑰：支援選填的 `MASTER_KEY_PREVIOUS`（或舊版本標籤）讀取舊資料，使用者下次登入時用新金鑰重寫 Email 欄位；Data Protection 金鑰換掉後所有人重新登入一次。
 
 **資料與 API**
 - 同時編輯：`uint Version` 對應 `xmin`（`[Timestamp]` / `IsRowVersion()`；`UseXminAsConcurrencyToken()` 已過時）。PUT 時要把用戶端送來的 `version` 設成 `OriginalValue` 再存檔，否則 EF 會拿剛讀出來的版本比對，檢查形同虛設。`DbUpdateConcurrencyException` 對應 409 `VEHICLE_MODIFIED`。加一個「送舊版本被擋」的測試。
@@ -332,7 +332,7 @@
 - **部署：** 第一版只在本機 Docker（測試環境），手動執行 `deploy.sh`；VPS（k3s）部署和分支安排延後。
 - **CI：** GitHub Actions 只跑測試，雲端 runner、無 secrets。
 
-**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，兩把金鑰放 `.env`；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `git pull` → `pg_dump` → `docker compose up -d --build`；第一版只在本機 Docker 部署，不用 Caddy，VPS（k3s）部署延後；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點；用 `AddOpenIdConnect` 接 Google（為了取得 `email_verified`：名單用 Email 比對，必須確認 Google 已驗證該帳號擁有這個信箱，否則可用未驗證的他人信箱註冊 Google 帳號冒用）；只申請 `openid email`，不申請 `profile`（畫面只顯示 Email）；Data Protection 金鑰存 PostgreSQL，並用 `.env` 裡的 AES 金鑰 `DATA_PROTECTION_KEY`（32 bytes，Base64，與 Email 的兩把金鑰分開）加密：自行實作 `IXmlEncryptor` / `IXmlDecryptor`（AES-GCM），和 Email 加密共用同一個 AES-GCM 工具類別；金鑰缺少或格式不對時服務啟動失敗；測試涵蓋加解密往返、用錯金鑰解密失敗、資料庫裡存的不是明文。金鑰遺失時所有人需重新登入，資料不受影響。不採用憑證（`.pfx`）方式，以免多管理一個檔案；CSRF 用 `XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header，以 middleware 檢查所有非 GET 的 `/api` 請求，並測試沒帶 header 的請求會被拒絕；migration 只增不改，從第一次部署到正式 VPS 開始適用；之前只有本機測試資料時可以自由修改、清空重建；規則引擎輸出檢驗項目清單，只列該車種有的檢驗（汽車只有定期檢驗、燃油機車只有排氣定檢、大型重機兩者都有、電動機車列排氣定檢並標免檢）；級距清單只在規則引擎定義一份，前端透過需登入的 `GET /api/reference/displacement-brackets` 取得；規則的期間算法用 C# 型別或 enum 表示（以發照月日、以發照月份、每年兩次加 6 個月推算、免檢），打錯字在編譯時就失敗；CI 也建置前端（`npm ci && npm run build`、型別檢查、Vitest 換算測試），並在 `.env` 被 git 追蹤時失敗；另加本機 pre-commit hook：hook 腳本放在 repo 的 `.githooks/`，每次 clone 後執行一次 `git config core.hooksPath .githooks` 啟用，commit 前擋下 `.env` 和非 `example.com` 的 Email；`.gitignore` 從第一個 commit 就包含 `.env`。已知限制：hook 可用 `--no-verify` 略過，CI 檢查只能事後發現，一旦外洩三把金鑰都要更換。
+**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，金鑰由 `.env` 的 `MASTER_KEY` 推導；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `git pull` → `pg_dump` → `docker compose up -d --build`；第一版只在本機 Docker 部署，不用 Caddy，VPS（k3s）部署延後；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點；用 `AddOpenIdConnect` 接 Google（為了取得 `email_verified`：名單用 Email 比對，必須確認 Google 已驗證該帳號擁有這個信箱，否則可用未驗證的他人信箱註冊 Google 帳號冒用）；只申請 `openid email`，不申請 `profile`（畫面只顯示 Email）；Data Protection 金鑰存 PostgreSQL，並用從 `MASTER_KEY` 推導的金鑰加密：自行實作 `IXmlEncryptor` / `IXmlDecryptor`（AES-GCM），和 Email 加密共用同一個 AES-GCM 工具類別；金鑰缺少或格式不對時服務啟動失敗；測試涵蓋加解密往返、用錯金鑰解密失敗、資料庫裡存的不是明文。金鑰遺失時所有人需重新登入，資料不受影響。不採用憑證（`.pfx`）方式，以免多管理一個檔案；CSRF 用 `XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header，以 middleware 檢查所有非 GET 的 `/api` 請求，並測試沒帶 header 的請求會被拒絕；migration 只增不改，從第一次部署到正式 VPS 開始適用；之前只有本機測試資料時可以自由修改、清空重建；規則引擎輸出檢驗項目清單，只列該車種有的檢驗（汽車只有定期檢驗、燃油機車只有排氣定檢、大型重機兩者都有、電動機車列排氣定檢並標免檢）；級距清單只在規則引擎定義一份，前端透過需登入的 `GET /api/reference/displacement-brackets` 取得；規則的期間算法用 C# 型別或 enum 表示（以發照月日、以發照月份、每年兩次加 6 個月推算、免檢），打錯字在編譯時就失敗；CI 也建置前端（`npm ci && npm run build`、型別檢查、Vitest 換算測試），並在 `.env` 被 git 追蹤時失敗；另加本機 pre-commit hook：hook 腳本放在 repo 的 `.githooks/`，每次 clone 後執行一次 `git config core.hooksPath .githooks` 啟用，commit 前擋下 `.env` 和非 `example.com` 的 Email；`.gitignore` 從第一個 commit 就包含 `.env`。已知限制：hook 可用 `--no-verify` 略過，CI 檢查只能事後發現，一旦外洩 `MASTER_KEY` 要更換。
 
 **審查建議、本版已採用（作者沒有逐項確認，可以否決）：** 第 15 節「第四輪審查的技術修正」整節。
 
@@ -340,7 +340,7 @@
 
 1. ~~行照上的指定檢驗日期~~ — 已決定：加選填欄位（見第 3 節）。
 2. ~~本機測試環境的加密範圍~~ — 已決定：第一版就做 Email 加密和 Data Protection 金鑰加密（作者決定；理由：等 VPS 有資料後再補，需要資料遷移和重新測試）。
-3. **金鑰數量：** 三把獨立金鑰，還是一把主金鑰 `MASTER_KEY`，再用 HKDF 依用途推導出三把？
+3. ~~金鑰數量~~ — 已決定：一把 `MASTER_KEY`，HKDF 推導三把（見第 15 節）。
 4. **推算日期的影響：** 「+ 6 個月推算」可能早也可能晚，違反「只會提早」的原則。推算的項目要不要參與變色和排序？
 5. **排氣量必填：** 排氣量只作紀錄、不影響任何規則，但目前是必填。要不要改成選填？
 6. **每人車輛數上限：** 列表在記憶體排序、不分頁，要不要設上限（例如 50 台）？
