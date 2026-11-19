@@ -261,7 +261,8 @@ SPA ── POST /api/vehicles（帶 X-XSRF-TOKEN）──► 登入檢查 → CS
   → CreateVehicleCommandHandler
       → Domain 驗證（日期、級距與車種、行照日期）── 失敗 → 400 + 錯誤代碼
       → IVehicleRepository：先永久刪除自己滿 30 天的垃圾桶車輛
-      → IVehicleRepository：計算車輛數（含垃圾桶）≥ 50 → 409 VEHICLE_LIMIT_REACHED
+      → 同一個交易：鎖住使用者那一列（SELECT ... FOR UPDATE），再計算車輛數（含垃圾桶）≥ 50 → 409 VEHICLE_LIMIT_REACHED
+        （同一使用者同時送出的新增會排隊執行，上限精確，不會變成 51 台）
       → 建立 Vehicle（正規化車牌）、儲存
           ── 唯一索引衝突 → 409 PLATE_EXISTS_ACTIVE / PLATE_EXISTS_IN_TRASH
       → 規則引擎診斷：行照日期與公式不一致 → 寫 LICENCE_DATE_MISMATCH log
@@ -837,7 +838,7 @@ Calculate(vehicle, today):
 | --- | --- |
 | `VehicleGo.Application.csproj` | 只參考 Domain |
 | `Abstractions/ICommandHandler.cs`、`IQueryHandler.cs` | handler 介面（C3） |
-| `Abstractions/IVehicleRepository.cs` | `GetForOwnerAsync(id, includeTrashed)`、`CountForOwnerIncludingTrashAsync`、`PurgeExpiredTrashAsync(ownerId, cutoff)`、`AddAsync`、`SaveAsync(vehicle, expectedVersion?)`、`DeleteAsync` |
+| `Abstractions/IVehicleRepository.cs` | `GetForOwnerAsync(id, includeTrashed)`、`LockOwnerAsync(ownerId)`（在交易中對 `users` 該列 `SELECT ... FOR UPDATE`）、`CountForOwnerIncludingTrashAsync`、`PurgeExpiredTrashAsync(ownerId, cutoff)`、`AddAsync`、`SaveAsync(vehicle, expectedVersion?)`、`DeleteAsync` |
 | `Abstractions/IUserRepository.cs` | `UpsertOnLoginAsync(sub, emailEncrypted, emailHash)`、`GetAsync`、`GetCalendarPreferenceAsync`、`SaveAsync` |
 | `Abstractions/IVehicleQueries.cs` | 列出使用中的車、取單台、列出垃圾桶（都只限目前使用者） |
 | `Abstractions/ICurrentUser.cs` | 目前使用者 ID 和 cookie 裡的 Email |
@@ -921,7 +922,7 @@ Calculate(vehicle, today):
 | `CsrfTests.cs` | 沒帶 header 回 `CSRF_INVALID`；未登入時先回 401 |
 | `VehicleTests.cs` | 1.5 節每個錯誤代碼至少一個測試；車牌重複（使用中、垃圾桶）；垃圾桶流程；滿 30 天的垃圾桶車輛在新增或登入時被刪除、讀取時看不到（用 `FakeTimeProvider` 控制時間） |
 | `ConcurrencyTests.cs` | 舊版本回 `VEHICLE_MODIFIED`；沒帶版本回 `VERSION_REQUIRED` |
-| `VehicleLimitTests.cs` | 第 51 台被擋下並附數量 |
+| `VehicleLimitTests.cs` | 第 51 台被擋下並附數量；有 49 台時同時送出兩筆新增，只有一筆成功、另一筆回 `VEHICLE_LIMIT_REACHED`（審查第 5 階段 N3） |
 | `IsolationTests.cs` | 使用者 A 對 B 的每個車輛和垃圾桶端點都回 404；`/api/me` 只讀寫自己 |
 | `LoggingTests.cs` | `LICENCE_DATE_MISMATCH` 只在新增或修改時寫 |
 | `HealthTests.cs` | `/health/live`、`/health/ready` 回傳 SHA |
