@@ -124,7 +124,7 @@
 - **CSRF：** 用 `XSRF-TOKEN` cookie 加上 `X-XSRF-TOKEN` header，所有非 GET 的 `/api` 請求都在 middleware 裡驗證（JSON API 不會自動檢查），並寫一個整合測試確認沒帶 header 的請求會被拒絕。
 - SPA 和 API 在同一個網域。開發時用 Vite proxy，`/signin-oidc` 也要轉發。
 - OIDC 失敗（`OnRemoteFailure`）時要寫 log、顯示錯誤頁，不要回 500。
-- Google 同意畫面設為「In production」。本機和 VPS 兩個 redirect URI 都要註冊，必須完全相符（包含 port）。
+- Google 同意畫面設為「In production」。第一版只註冊本機的 redirect URI（`http://localhost:<port>/signin-oidc`，必須完全相符，包含 port）；VPS 的網址等部署 VPS 時再加。
 
 ### 9. 時間與日曆
 
@@ -140,21 +140,21 @@
 
 ### 10. 部署
 
-- **作者決定：** 第一版不做自動部署，程式放 GitHub，在本機和 VPS 上手動執行部署腳本。分支安排（`main` + `prod`，或只用 `main` 加 tag）延到部署時決定；以下提到「部署用的分支或 tag」時兩種都適用。
+- **作者決定：第一版只部署在本機 Docker（Docker Compose），VPS 部署延後。** VPS 實際上是 k3s，Cloudflare 代理（橘色雲朵）+ 原點憑證；部署到 VPS 時要改寫成 Kubernetes 資源（Deployment、Service、Ingress／Traefik TLS Secret、migration Job、Secret、備份 CronJob），屆時再設計。為了日後好移植，所有設定（連線字串、金鑰、名單）一律從環境變數讀取：本機由 `.env` 提供，k3s 由 Secret 提供，程式不需要改。
 - **`docker compose up -d` 不會重建映像檔。** `git pull` 之後只執行 `up -d`，跑的還是舊程式，而且看起來一切正常。**作者決定：** 寫一個 `deploy.sh`，內容依序為：`git pull` → `pg_dump`（部署前備份）→ `docker compose up -d --build`。API 啟動時寫出 git commit SHA，`/health` 也回傳 SHA，用來確認現在跑的是哪一版。
 - **映像檔：** 一個 multi-stage Dockerfile（Node 建置 Vue → .NET publish → runtime 映像檔提供 API 和靜態檔），另外一個 migration bundle 的 target。
 - **Compose 服務：**
   - `db`：用 `pg_isready` 做 healthcheck。
   - `migrate`：`restart: "no"`，等 `db` healthy 才執行。
   - `api`：等 `migrate` 成功後才啟動，`restart: unless-stopped`。官方 aspnet 映像檔沒有 curl，healthcheck 要用 API 自己提供的檢查指令。
-  - `caddy`：只在 VPS 啟用（作者決定），用 Compose profile 控制（VPS 的 `.env` 設 `COMPOSE_PROFILES=edge`）。這樣兩台主機的指令都一樣。
-  - 設定 Docker log 輪替（`max-size`、`max-file`），避免 VPS 磁碟被 log 塞滿。
-- **反向代理：** ASP.NET Core 預設只信任 loopback 送來的 forwarded headers，Caddy 在另一個容器裡，它送的 header 會被忽略，OAuth redirect_uri 會變成 http，導致 Google 登入只在 VPS 上失敗（3 位審查者）。要設定信任 Compose 網路（.NET 10 的 `KnownIPNetworks`），API 的 port 不對外公開，並寫一個測試：帶 `X-Forwarded-Proto: https` 時，產生的 redirect_uri 必須是 https。
+  - 不需要 Caddy：本機直接用 `http://localhost`（Google OAuth 允許 localhost 用 HTTP）。
+  - 設定 Docker log 輪替（`max-size`、`max-file`），避免磁碟被 log 塞滿。
+- **反向代理與 forwarded headers：延後到 VPS 部署時處理。** 第一版只在本機、沒有反向代理，不需要設定。屆時要信任的是 k3s 裡的 Traefik（Pod 網段），並寫測試確認 `X-Forwarded-Proto: https` 時 redirect_uri 為 https。
 - **回滾：** 第一版的 migration 只能「增加」（新增可為 null 或有預設值的欄位、新增資料表），不能在同一版裡改名或刪除。回滾的做法是：在 `main` revert → 更新部署用的分支或 tag → 重新部署。只有在 migration 本身必須撤銷時，才還原部署前的 dump。
-- **備份：** 主機上排程 `docker compose exec db pg_dump`，保留 7 份每日、4 份每週備份，dump 和 `.env` 要複製到 VPS 以外的地方。第一批使用者進來前，先實際做一次還原測試。
+- **備份：** 本機排程 `docker compose exec db pg_dump`，保留 7 份每日、4 份每週備份，dump 和 `.env` 要分開存放並複製到本機以外的地方。第一批使用者進來前，先實際做一次還原測試。
 - **（只在選擇 `main` + `prod` 時）`prod` 只能從 `main` 合併：** GitHub 的分支保護設不出「只能從某個分支合併」。要用一個必要的 CI 檢查：PR 目標是 `prod` 時，來源不是 `main` 就失敗。
 - **兩個分支、兩個環境的必要性**也被審查者質疑：一個人開發，`main` + `prod` 兩條長期分支、兩份 `.env`、兩個 redirect URI 是額外負擔。替代做法：只用 `main`，VPS 部署某個 tag。**作者決定：先記成待定，真正要部署時再決定。** 兩種做法的 CI 完全相同；差別只在「上線」是開 `main` → `prod` 的 PR（需要額外的來源分支檢查），還是在 `main` 打 tag。
-- **本機環境的角色（延到部署時，和分支一起決定）：** 本機如果也存真實資料，就需要和 VPS 一樣的備份和密鑰管理；如果只是測試用，就用另一份測試用的名單。
+- **本機環境的角色：** 第一版本機是唯一的環境，存的是真實資料，所以備份和密鑰管理都照正式環境的標準做。
 
 ### 11. 密鑰與名單不進 git（作者決定）
 
@@ -292,16 +292,16 @@
 - **部署：** 手動執行 `deploy.sh`；分支安排（`main` + `prod`，或只用 `main` 加 tag）待部署時再決定。
 - **CI：** GitHub Actions 只跑測試，雲端 runner、無 secrets。
 
-**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，兩把金鑰放 `.env`；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `git pull` → `pg_dump` → `docker compose up -d --build`；Caddy 只在 VPS 啟用；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點；用 `AddOpenIdConnect` 接 Google（為了取得 `email_verified`：名單用 Email 比對，必須確認 Google 已驗證該帳號擁有這個信箱，否則可用未驗證的他人信箱註冊 Google 帳號冒用）；只申請 `openid email`，不申請 `profile`（畫面只顯示 Email）；Data Protection 金鑰存 PostgreSQL，並用 `.env` 裡的 AES 金鑰 `DATA_PROTECTION_KEY`（32 bytes，Base64，與 Email 的兩把金鑰分開）加密：自行實作 `IXmlEncryptor` / `IXmlDecryptor`（AES-GCM），和 Email 加密共用同一個 AES-GCM 工具類別；金鑰缺少或格式不對時服務啟動失敗；測試涵蓋加解密往返、用錯金鑰解密失敗、資料庫裡存的不是明文。金鑰遺失時所有人需重新登入，資料不受影響。不採用憑證（`.pfx`）方式，以免多管理一個檔案；CSRF 用 `XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header，以 middleware 檢查所有非 GET 的 `/api` 請求，並測試沒帶 header 的請求會被拒絕。
+**作者逐項確認的決定（原為審查建議）：** 使用者表存 Email，用 AES-GCM 加密 + HMAC 查詢雜湊，兩把金鑰放 `.env`；多檢驗項目每台車一列、每項一行、各自變色、用最早期限排序；狀態文字只陳述期間；日期用年、月、日三個下拉選單（年份依設定顯示民國或西元，往前 50 年）；同時編輯用 `xmin` 檢查，不一致回傳 `VEHICLE_MODIFIED`、提示「資料已被修改，請重新整理」（丟進垃圾桶、還原、永久刪除不檢查版本）；`deploy.sh` 依序為 `git pull` → `pg_dump` → `docker compose up -d --build`；第一版只在本機 Docker 部署，不用 Caddy，VPS（k3s）部署延後；電動大型重型機車不支援、不註明；名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它），另加一個測試確認 OIDC 事件有呼叫它；移出名單的測試走真正的 cookie 機制，透過只在測試環境註冊的登入端點取得 cookie，並另加一個測試確認正式環境沒有這個端點；用 `AddOpenIdConnect` 接 Google（為了取得 `email_verified`：名單用 Email 比對，必須確認 Google 已驗證該帳號擁有這個信箱，否則可用未驗證的他人信箱註冊 Google 帳號冒用）；只申請 `openid email`，不申請 `profile`（畫面只顯示 Email）；Data Protection 金鑰存 PostgreSQL，並用 `.env` 裡的 AES 金鑰 `DATA_PROTECTION_KEY`（32 bytes，Base64，與 Email 的兩把金鑰分開）加密：自行實作 `IXmlEncryptor` / `IXmlDecryptor`（AES-GCM），和 Email 加密共用同一個 AES-GCM 工具類別；金鑰缺少或格式不對時服務啟動失敗；測試涵蓋加解密往返、用錯金鑰解密失敗、資料庫裡存的不是明文。金鑰遺失時所有人需重新登入，資料不受影響。不採用憑證（`.pfx`）方式，以免多管理一個檔案；CSRF 用 `XSRF-TOKEN` cookie + `X-XSRF-TOKEN` header，以 middleware 檢查所有非 GET 的 `/api` 請求，並測試沒帶 header 的請求會被拒絕。
 
-**審查建議、本版已採用（作者沒有逐項確認，可以否決）：** forwarded headers 信任 Compose 網路；migration 只增不改；規則引擎輸出檢驗項目清單；級距清單由 API 提供給前端；規則計算方式用型別表示；CI 也建置前端、檢查 `.env` 沒被追蹤。
+**審查建議、本版已採用（作者沒有逐項確認，可以否決）：** migration 只增不改；規則引擎輸出檢驗項目清單；級距清單由 API 提供給前端；規則計算方式用型別表示；CI 也建置前端、檢查 `.env` 沒被追蹤。
 
 **待作者決定：** 無。
 
 **延後決定（有觸發條件）：**
 
 - **規則生效日與版本選擇** — 觸發：核對條文、確認過渡條款用哪個日期判斷時。見 Analysis 第 2 節。
-- **分支安排（`main` + `prod`，或只用 `main` 加 tag）與本機環境的角色** — 觸發：第一次部署到 VPS 之前。見 Analysis 第 10 節。
+- **VPS（k3s）部署、分支安排、反向代理與 forwarded headers** — 觸發：決定要部署到 VPS 時。見 Analysis 第 10 節。
 
 **前置工作（阻擋條件）：**
 
