@@ -273,7 +273,7 @@
 - **JWT 存在 localStorage、SPA 自己處理 PKCE** — 審查者建議否決：token 會暴露在 XSS 風險下。
 - **ASP.NET Identity、Keycloak、Auth0、Duende BFF** — 審查者建議否決：只用 Google 登入、沒有角色時太重。
 - **拍行照用 OCR 辨識** — 審查者建議否決：範圍太大、個資更多。
-- **`xmin` 樂觀並行控制** — 審查者建議第一版不做：每個人只改自己的幾台車，同時編輯的機會很低，最後寫入的為準。做的話需要 API 回傳版本、PUT 帶回版本、獨立的錯誤代碼。
+- **不做同時編輯檢查（最後寫入為準）** — 作者否決：第一版要用 `xmin` 檢查，不一致時擋下並提示「資料已被修改，請重新整理」。審查者原本的理由：每個人只改自己的幾台車，同時編輯的機會很低，最後寫入的為準。做的話需要 API 回傳版本、PUT 帶回版本、獨立的錯誤代碼。
 
 ## Key Decisions & Staging for Next Steps
 
@@ -291,7 +291,7 @@
 - **部署：** 手動執行 `deploy.sh`；分支安排（`main` + `prod`，或只用 `main` 加 tag）待部署時再決定。
 - **CI：** GitHub Actions 只跑測試，雲端 runner、無 secrets。
 
-**審查建議、本版已採用（作者可以否決）：** 名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它）；cookie 名單測試走真正的 cookie 機制；使用者表存 Email（只供人工刪除查詢）；`AddOpenIdConnect`；只申請 `openid email`；Data Protection 金鑰存 PostgreSQL；CSRF 用 XSRF cookie + header；forwarded headers 信任 Compose 網路；`deploy.sh`（`pg_dump` → `up -d --build`）；Caddy 用 Compose profile；migration 只增不改；狀態文字只陳述期間；規則引擎輸出檢驗項目清單；多檢驗項目的列表顯示和排序方式；級距清單由 API 提供給前端；民國輸入格式；規則計算方式用型別表示；CI 也建置前端、檢查 `.env` 沒被追蹤；第一版不做 `xmin`。
+**審查建議、本版已採用（作者可以否決）：** 名單檢查放在獨立服務並直接測試（OIDC 事件和 cookie 事件都呼叫它）；cookie 名單測試走真正的 cookie 機制；使用者表存 Email（只供人工刪除查詢）；`AddOpenIdConnect`；只申請 `openid email`；Data Protection 金鑰存 PostgreSQL；CSRF 用 XSRF cookie + header；forwarded headers 信任 Compose 網路；`deploy.sh`（`pg_dump` → `up -d --build`）；Caddy 用 Compose profile；migration 只增不改；狀態文字只陳述期間；規則引擎輸出檢驗項目清單；多檢驗項目的列表顯示和排序方式；級距清單由 API 提供給前端；民國輸入格式；規則計算方式用型別表示；CI 也建置前端、檢查 `.env` 沒被追蹤；`xmin` 同時編輯檢查（作者決定要做）。
 
 **待作者決定：** 無。
 
