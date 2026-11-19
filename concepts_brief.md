@@ -239,15 +239,22 @@
 10. **出廠存完整日期**，車齡以日期計算；**檢驗期間以原發照日為基準**（機車若條文規定以月份為準，就改用月份計算）。
 11. 「逾期」功能（含登記已驗車）留到之後的版本。免責說明是否加入，待作者確認。
 
-**待作者決定（建議在 `/egm-draft` 前或過程中回答）：**
+**後續追加的決定：**
 
-1. **排氣量級距**（作者已決定：自用小客車和燃油機車都必填，下拉選單照**牌照稅分級**）。後果：級距不一定對得上大型重型機車的門檻，所以第一版排除大型重機時，要在選單裡只列出明確低於門檻的級距；跨門檻的那一級要核對條文後決定是否列出。級距清單寫在程式裡，和驗車規則一樣附上法規出處。
+12. **排氣量級距**（作者決定：自用小客車和燃油機車都必填，下拉選單照**牌照稅分級**）。後果：級距不一定對得上大型重型機車的門檻，所以第一版排除大型重機時，要在選單裡只列出明確低於門檻的級距；跨門檻的那一級要核對條文後決定是否列出。級距清單寫在程式裡，和驗車規則一樣附上法規出處。
    - 電動汽車（作者決定）：汽車的排氣量選單加一個「電動」選項。資料上存成固定的級距代碼（例如 `ELECTRIC`），不要存成 0cc 或空值。注意這和機車的做法不一致：電動機車是獨立的車種，電動汽車則是排氣量選項。汽車驗車規則只看車齡，所以第一版不受影響；但第二版做稅金時（電動車牌照稅另有規定），程式要靠這個代碼判斷。
-2. **部署方式**（作者已決定）：第一版**不做自動部署**（不用 GitHub Actions 部署）。本機（`main`）和 VPS（`prod`）都是手動 `git pull` 後執行 `docker compose up -d`。所以：
+13. **部署方式**（作者決定）：第一版**不做自動部署**（不用 GitHub Actions 部署）。本機（`main`）和 VPS（`prod`）都是手動 `git pull` 後執行 `docker compose up -d`。所以：
    - `docker compose up -d` 必須一次完成所有事：migration 由 Compose 裡的一次性服務先執行，API 等它成功後才啟動（`depends_on: condition: service_completed_successfully`）。
    - 每台主機各自有不進 git 的 `.env`。
    - VPS 仍需要網域和 HTTPS（Google OAuth 除了 `localhost` 以外都要求 HTTPS 加公開網域），可以在 Compose 裡加一個 Caddy 自動申請憑證。本機用 `http://localhost`。兩個 redirect URI 都要註冊到 Google OAuth client。
    - `prod` 分支設保護規則：只能從 `main` 合併，不能直接 push。
    - 之後加自動部署時的安全規則（已討論，留給後續版本）：公開 repo 不使用 self-hosted runner，或只用 `push` 觸發；不使用 `pull_request_target`；VPS 的 SSH 金鑰放在只限 `prod` 分支的 GitHub Environment；或改成主機自己定期從 GHCR 拉新映像檔。
+14. **CI 測試用 GitHub Actions 跑**（作者決定）：只跑建置和測試，不部署。
+   - 觸發：`pull_request` 和 `push`（`main`、`prod`）。
+   - 一律跑在 GitHub 提供的雲端 runner（`ubuntu-latest`，內建 Docker，Testcontainers 可以直接使用），不使用 self-hosted runner。
+   - workflow 不需要任何 secrets：整合測試用測試用的假登入處理器，不連 Google；PostgreSQL 由 Testcontainers 啟動，版本和 `docker-compose.yml` 一致。
+   - workflow 權限設為唯讀（`permissions: contents: read`），不使用 `pull_request_target`。
+   - `main` 和 `prod` 設分支保護：CI 通過才能合併。
+   - CI 裡加一道檢查：repo 出現 `example.com` 以外的 Email 時失敗。
 
 **法規核對（寫測試前必做）：** 道路交通安全規則第 44 條（汽車定期檢驗）的現行條文和修正日期；環境部機車排氣定期檢驗的相關規定；大型重型機車的排氣量門檻。測試案例名稱要附上條號和修正日期。
