@@ -702,7 +702,7 @@ Calculate(vehicle, today):
 | `GET /api/vehicles?sort=` | — | 200 `[VehicleDto]` | 401 |
 | `GET /api/vehicles/{id}` | — | 200 `VehicleDto` | 404 `VEHICLE_NOT_FOUND`、401 |
 | `POST /api/vehicles` | `VehicleInput` | 201 `VehicleDto`（`Location` header） | 400 驗證錯誤、409 `PLATE_EXISTS_ACTIVE`／`PLATE_EXISTS_IN_TRASH`／`VEHICLE_LIMIT_REACHED`、401、400 `CSRF_INVALID` |
-| `PUT /api/vehicles/{id}` | `VehicleInput` + `version` | 200 `VehicleDto` | 400 驗證錯誤、400 `VERSION_REQUIRED`、404、409 `VEHICLE_MODIFIED`／`VEHICLE_IN_TRASH`／`PLATE_EXISTS_*`、401、400 `CSRF_INVALID` |
+| `PUT /api/vehicles/{id}` | `VehicleInput` + `version` | 200 `VehicleDto` | 400 驗證錯誤（沒帶 `version` 也屬於 `VALIDATION_FAILED`）、404、409 `VEHICLE_MODIFIED`／`VEHICLE_IN_TRASH`／`PLATE_EXISTS_*`、401、400 `CSRF_INVALID` |
 | `POST /api/vehicles/{id}/trash` | — | 204 | 404、409 `VEHICLE_IN_TRASH`、401、400 `CSRF_INVALID` |
 | `POST /api/vehicles/{id}/restore` | — | 204 | 404、409 `VEHICLE_NOT_IN_TRASH`、401、400 `CSRF_INVALID` |
 | `DELETE /api/vehicles/{id}` | — | 204 | 404、409 `VEHICLE_NOT_IN_TRASH`、401、400 `CSRF_INVALID` |
@@ -718,7 +718,7 @@ Calculate(vehicle, today):
 
 | 代碼 | HTTP | 情況 |
 | --- | --- | --- |
-| `VALIDATION_FAILED` | 400 | 必填欄位缺漏、格式錯誤（附欄位清單） |
+| `VALIDATION_FAILED` | 400 | 必填欄位缺漏（包括 PUT 沒帶 `version`）、格式錯誤（附欄位清單） |
 | `ISSUE_BEFORE_MANUFACTURE` | 400 | 原發照日早於出廠日 |
 | `DATE_IN_FUTURE` | 400 | 出廠日或原發照日是未來日期 |
 | `BRACKET_TYPE_MISMATCH` | 400 | 級距不屬於該車種，或電動機車送了級距、其他車種沒送 |
@@ -726,7 +726,6 @@ Calculate(vehicle, today):
 | `LICENCE_DATE_BEFORE_ISSUE` | 400 | 行照日期早於原發照日 |
 | `LICENCE_DATE_TOO_FAR` | 400 | 行照日期晚於今年 + 2 年的 12/31 |
 | `INVALID_CALENDAR` | 400 | 曆法值不是 `ROC` 或 `GREGORIAN` |
-| `VERSION_REQUIRED` | 400 | PUT 沒帶 `version` |
 | `CSRF_INVALID` | 400 | CSRF token 缺少或錯誤 |
 | `VEHICLE_NOT_FOUND` | 404 | 車輛不存在或不屬於目前使用者 |
 | `PLATE_EXISTS_ACTIVE` | 409 | 車牌和使用中的車重複 |
@@ -921,7 +920,7 @@ Calculate(vehicle, today):
 | `AuthTests.cs` | `/api` 未登入回 401（不轉址）；移出名單後下一個請求 401；`returnUrl` 拒絕外部網址；登出要 CSRF；同時第一次登入只建立一筆 |
 | `CsrfTests.cs` | 沒帶 header 回 `CSRF_INVALID`；未登入時先回 401 |
 | `VehicleTests.cs` | 1.5 節每個錯誤代碼至少一個測試；車牌重複（使用中、垃圾桶）；垃圾桶流程；滿 30 天的垃圾桶車輛在新增或登入時被刪除、讀取時看不到（用 `FakeTimeProvider` 控制時間） |
-| `ConcurrencyTests.cs` | 舊版本回 `VEHICLE_MODIFIED`；沒帶版本回 `VERSION_REQUIRED` |
+| `ConcurrencyTests.cs` | 舊版本回 `VEHICLE_MODIFIED`；沒帶版本回 `VALIDATION_FAILED`（欄位清單含 `version`） |
 | `VehicleLimitTests.cs` | 第 51 台被擋下並附數量；有 49 台時同時送出兩筆新增，只有一筆成功、另一筆回 `VEHICLE_LIMIT_REACHED`（審查第 5 階段 N3） |
 | `IsolationTests.cs` | 使用者 A 對 B 的每個車輛和垃圾桶端點都回 404；`/api/me` 只讀寫自己 |
 | `LoggingTests.cs` | `LICENCE_DATE_MISMATCH` 只在新增或修改時寫 |
