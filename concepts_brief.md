@@ -318,10 +318,10 @@
 - **用 Google 同意畫面的「Testing」測試帳號當名單** — 作者否決（採用程式內名單）：會顯示未驗證警告，名單要到 Google Cloud Console 修改，也沒辦法寫整合測試。
 - **用 `sub` 當名單** — 作者否決（採用 Email 名單）：事先不會知道別人的 `sub`。
 - **用 GitHub Actions 依分支自動部署（本機 self-hosted runner、VPS 用 SSH）** — 延後（不是否決；觸發條件見 Key Decisions 的延後決定）：repo 是公開的，self-hosted runner 可能讓 fork PR 在作者電腦上執行程式。之後要加時的規則：不在公開 repo 用 self-hosted runner，或只用 `push` 觸發；不用 `pull_request_target`；SSH 金鑰放在只限 `prod` 的 GitHub Environment；或改成主機自己從 GHCR 拉映像檔。
-- **`AddGoogle`** — 審查者建議否決：預設不帶 `email_verified`，issuer 不是標準值。改用 `AddOpenIdConnect`。
-- **JWT 存在 localStorage、SPA 自己處理 PKCE** — 審查者建議否決：token 會暴露在 XSS 風險下。
-- **ASP.NET Identity、Keycloak、Auth0、Duende BFF** — 審查者建議否決：只用 Google 登入、沒有角色時太重。
-- **拍行照用 OCR 辨識** — 審查者建議否決：範圍太大、個資更多。
+- **`AddGoogle`** — 作者否決（接受審查建議）：預設不帶 `email_verified`，issuer 不是標準值。改用 `AddOpenIdConnect`。
+- **JWT 存在 localStorage、SPA 自己處理 PKCE** — 作者否決（接受審查建議）：token 會暴露在 XSS 風險下。
+- **ASP.NET Identity、Keycloak、Auth0、Duende BFF** — 作者否決（接受審查建議）：只用 Google 登入、沒有角色時太重。
+- **拍行照用 OCR 辨識** — 作者否決（接受審查建議）：範圍太大、個資更多。
 - **自己寫 CSRF 檢查的 middleware** — 作者否決（接受第四輪審查建議）：改用框架內建的 `IAntiforgery`，效果相同、少寫程式。
 - **本機 `deploy.sh` 先執行 `git pull`** — 作者否決（接受第四輪審查建議）：本機就是開發機，`git pull` 可能蓋掉進行中的修改。
 - **第一版不加 gitleaks** — 作者否決：`check-secrets.sh` 抓不到被直接寫進設定檔或程式的密鑰，repo 是公開的。
@@ -355,10 +355,7 @@
 
 **審查建議、本版已採用（作者沒有逐項確認，可以否決）：** 無（第 15 節已由作者整批接受）。
 
-**待作者決定（一致性檢查提出，一次一題）：**
-
-1. ~~換金鑰的範圍~~ — 已決定：第一版不支援，遺失或更換時清空資料庫重建；延到部署 VPS 時設計（見第 15 節）。
-2. **審查者建議否決、作者沒有表態的替代方案：** `AddGoogle`、JWT 存在 localStorage、ASP.NET Identity／Keycloak／Auth0／Duende BFF、拍行照 OCR。要以「作者否決（接受審查建議）」記錄，還是要重新考慮其中哪一項？
+**待作者決定：** 無。一致性檢查提出的 2 題都已決定：第一版不支援換金鑰；審查者建議否決的 4 個替代方案都記為作者否決。
 
 **延後決定（有觸發條件）：**
 
