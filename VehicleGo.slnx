@@ -3,8 +3,10 @@
     <Project Path="src/VehicleGo.Application/VehicleGo.Application.csproj" />
     <Project Path="src/VehicleGo.Domain/VehicleGo.Domain.csproj" />
     <Project Path="src/VehicleGo.Infrastructure/VehicleGo.Infrastructure.csproj" />
+    <Project Path="src/VehicleGo.Web/VehicleGo.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/VehicleGo.IntegrationTests/VehicleGo.IntegrationTests.csproj" />
     <Project Path="tests/VehicleGo.UnitTests/VehicleGo.UnitTests.csproj" />
   </Folder>
 </Solution>

@@ -3,65 +3,16 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using VehicleGo.Application.Abstractions;
 using VehicleGo.Domain.Common;
 using VehicleGo.Domain.Users;
 using VehicleGo.Domain.Vehicles;
 using VehicleGo.Infrastructure.DataProtection;
 using VehicleGo.Infrastructure.Persistence;
-using VehicleGo.UnitTests.Fakes;
 
-namespace VehicleGo.UnitTests.Infrastructure;
+namespace VehicleGo.IntegrationTests.Infrastructure;
 
-/// <summary>
-/// Starts PostgreSQL (tag from <c>postgres-image.txt</c>) once and applies both migrations.
-/// Needs Docker. Full repository behaviour is covered by the integration tests (step 5).
-/// </summary>
-public sealed class PostgresFixture : IAsyncLifetime
-{
-    private PostgreSqlContainer? _container;
-
-    public string ConnectionString => _container!.GetConnectionString();
-
-    public static string ImageTag()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            var file = Path.Combine(dir.FullName, "postgres-image.txt");
-            if (File.Exists(file))
-            {
-                return File.ReadAllText(file).Trim();
-            }
-        }
-
-        throw new FileNotFoundException("postgres-image.txt not found above the test output directory.");
-    }
-
-    public async ValueTask InitializeAsync()
-    {
-        _container = new PostgreSqlBuilder(ImageTag()).Build();
-        await _container.StartAsync();
-
-        await using var provider = InfrastructureServices.Build(ConnectionString, new FakeCurrentUser());
-        await DatabaseMigrator.MigrateAsync(provider, CancellationToken.None);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.DisposeAsync();
-        }
-    }
-}
-
-[CollectionDefinition(Name)]
-public sealed class PostgresCollection : ICollectionFixture<PostgresFixture>
-{
-    public const string Name = "PostgreSQL";
-}
-
+/// <summary>Repository / schema tests directly against PostgreSQL (moved from UnitTests: D-T4, UnitTests need no database).</summary>
 [Collection(PostgresCollection.Name)]
 public sealed class PostgresSmokeTests(PostgresFixture postgres)
 {

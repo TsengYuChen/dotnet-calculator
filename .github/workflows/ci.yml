@@ -22,6 +22,8 @@ jobs:
         run: dotnet build VehicleGo.slnx --no-restore --configuration Release
       - name: Unit tests
         run: dotnet test tests/VehicleGo.UnitTests/VehicleGo.UnitTests.csproj --no-build --configuration Release
+      - name: Integration tests (Testcontainers PostgreSQL, needs Docker)
+        run: dotnet test tests/VehicleGo.IntegrationTests/VehicleGo.IntegrationTests.csproj --no-build --configuration Release
 
   check-secrets:
     runs-on: ubuntu-24.04
