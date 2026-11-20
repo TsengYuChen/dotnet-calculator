@@ -1,5 +1,9 @@
 # 第 9 階段：Implementation Readiness 報告（第 2 輪重審）
 
+**Status:** resolved（2026-11-20）
+
+**作者決定（逐項確認）：** 9 個 Major 全部接受。R2-M1 選 (a)：取出車輛後先比對版本號；R2-M3 選 (a)：刪除 `INVALID_CALENDAR`，改回 `VALIDATION_FAILED`；R2-M9 選 (a)：維持 `aspnet:10.0-noble`，Dockerfile 加 `USER $APP_UID`。Nit 分三組（流程與定義、技術細節、文字）全部接受。已套用到設計文件。
+
 *   **審查對象：** `docs/designs/vehicle_management.md` 第 742–1242 行（第 1 輪後重寫的詳細實作計畫）
 *   **審查者：** egm-implementation-readiness、egm-codebase-details、egm-style
 *   **日期：** 2026-11-19
