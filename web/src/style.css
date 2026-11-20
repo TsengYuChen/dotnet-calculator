@@ -1,0 +1,36 @@
+:root {
+  --vg-highlight: #c2410c;
+  --vg-highlight-bg: #fff7ed;
+  --vg-muted: #6b7280;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  color: #1f2937;
+  background: #f9fafb;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.page-header h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.muted {
+  color: var(--vg-muted);
+}
