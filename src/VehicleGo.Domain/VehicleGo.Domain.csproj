@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Domain must not reference any other project or framework package (BCL only). -->
+  <PropertyGroup>
+    <RootNamespace>VehicleGo.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

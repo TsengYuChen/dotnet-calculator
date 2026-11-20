@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore VehicleGo.slnx
+      - name: Build
+        run: dotnet build VehicleGo.slnx --no-restore --configuration Release
+      - name: Unit tests
+        run: dotnet test tests/VehicleGo.UnitTests/VehicleGo.UnitTests.csproj --no-build --configuration Release
+
+  check-secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check secrets
+        run: bash scripts/check-secrets.sh
+
+  gitleaks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (pinned, checksum verified)
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .gitleaks-version)"
+          tarball="gitleaks_${version}_linux_x64.tar.gz"
+          workdir="$(mktemp -d)"
+          curl -fsSL -o "${workdir}/${tarball}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${tarball}"
+          cp .gitleaks-version.sha256 "${workdir}/"
+          (cd "${workdir}" && sha256sum -c .gitleaks-version.sha256)
+          tar -xzf "${workdir}/${tarball}" -C "${workdir}" gitleaks
+          sudo install -m 0755 "${workdir}/gitleaks" /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan full history
+        run: gitleaks git --redact --config .gitleaks.toml --verbose .

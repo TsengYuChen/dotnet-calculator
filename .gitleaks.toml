@@ -1,0 +1,10 @@
+title = "VehicleGo gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fixed fake test vectors for HKDF key derivation tests"
+paths = [
+  '''^tests/VehicleGo\.UnitTests/Infrastructure/KeyDerivationTests\.cs$''',
+]
