@@ -15,11 +15,16 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="TngTech.ArchUnitNET.xUnitV3" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/VehicleGo.Domain/VehicleGo.Domain.csproj" />
     <ProjectReference Include="../../src/VehicleGo.Application/VehicleGo.Application.csproj" />
+    <ProjectReference Include="../../src/VehicleGo.Infrastructure/VehicleGo.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

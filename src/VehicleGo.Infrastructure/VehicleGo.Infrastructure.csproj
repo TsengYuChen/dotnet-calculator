@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Infrastructure references Application and Domain (D-T1): EF Core + Npgsql implementations of the
+    Application interfaces, crypto (HKDF / AES-GCM) and Data Protection key storage.
+    Web references this project only to compose dependencies.
+  -->
+  <PropertyGroup>
+    <RootNamespace>VehicleGo.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../VehicleGo.Application/VehicleGo.Application.csproj" />
+    <ProjectReference Include="../VehicleGo.Domain/VehicleGo.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

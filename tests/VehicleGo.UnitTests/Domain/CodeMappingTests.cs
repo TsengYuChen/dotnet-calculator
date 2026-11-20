@@ -1,16 +1,18 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VehicleGo.Domain.Common;
 using VehicleGo.Domain.Inspections;
 using VehicleGo.Domain.Users;
 using VehicleGo.Domain.Vehicles;
+using VehicleGo.Infrastructure.Persistence;
 
 namespace VehicleGo.UnitTests.Domain;
 
 /// <summary>
 /// Design §1.1: every code enum member maps to its fixed code through <see cref="JsonStringEnumMemberNameAttribute"/>.
-/// JSON side only for now; the database ValueConverter is tested when Infrastructure is added.
+/// Both the JSON converter and the shared database <see cref="CodeValueConverter{TEnum}"/> use it.
 /// </summary>
 public class CodeMappingTests
 {
@@ -94,6 +96,44 @@ public class CodeMappingTests
             Assert.Throws<JsonException>(() => JsonSerializer.Deserialize($"\"{memberName}\"", enumType, Json));
         }
     }
+
+    private static ValueConverter DbConverter(Type enumType) =>
+        (ValueConverter)Activator.CreateInstance(typeof(CodeValueConverter<>).MakeGenericType(enumType))!;
+
+    [Theory]
+    [MemberData(nameof(CodeEnums))]
+    public void 資料庫來回轉換(Type enumType)
+    {
+        var converter = DbConverter(enumType);
+        var values = Enum.GetValues(enumType);
+
+        Assert.Equal(typeof(string), converter.ProviderClrType);
+        for (var i = 0; i < values.Length; i++)
+        {
+            var value = values.GetValue(i)!;
+            Assert.Equal(ExpectedCodes[enumType][i], converter.ConvertToProvider(value));
+            Assert.Equal(value, converter.ConvertFromProvider(ExpectedCodes[enumType][i]));
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CodeEnums))]
+    public void 資料庫不接受enum名稱和數字(Type enumType)
+    {
+        var converter = DbConverter(enumType);
+
+        Assert.Throws<InvalidOperationException>(() => converter.ConvertFromProvider("0"));
+        Assert.Throws<InvalidOperationException>(() => converter.ConvertFromProvider("UNKNOWN_CODE"));
+        var memberName = Enum.GetNames(enumType)[0];
+        if (!ExpectedCodes[enumType].Contains(memberName))
+        {
+            Assert.Throws<InvalidOperationException>(() => converter.ConvertFromProvider(memberName));
+        }
+    }
+
+    [Fact]
+    public void 資料庫不寫入未定義的enum值() =>
+        Assert.Throws<InvalidOperationException>(() => DbConverter(typeof(VehicleType)).ConvertToProvider((VehicleType)99));
 
     [Fact]
     public void JSON不認得的代碼解析失敗()

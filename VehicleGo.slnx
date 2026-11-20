@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/VehicleGo.Application/VehicleGo.Application.csproj" />
     <Project Path="src/VehicleGo.Domain/VehicleGo.Domain.csproj" />
+    <Project Path="src/VehicleGo.Infrastructure/VehicleGo.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/VehicleGo.UnitTests/VehicleGo.UnitTests.csproj" />

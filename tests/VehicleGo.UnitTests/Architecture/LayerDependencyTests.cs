@@ -14,7 +14,10 @@ namespace VehicleGo.UnitTests.Architecture;
 public class LayerDependencyTests
 {
     private static readonly ArchUnitNET.Domain.Architecture Layers = new ArchLoader()
-        .LoadAssemblies(typeof(Vehicle).Assembly, typeof(VehicleGo.Application.DependencyInjection).Assembly)
+        .LoadAssemblies(
+            typeof(Vehicle).Assembly,
+            typeof(VehicleGo.Application.DependencyInjection).Assembly,
+            typeof(VehicleGo.Infrastructure.DependencyInjection).Assembly)
         .Build();
 
     private static readonly IObjectProvider<IType> DomainLayer =
@@ -27,6 +30,9 @@ public class LayerDependencyTests
     /// Matches dependency targets by namespace (also types of assemblies that are not loaded, such as
     /// EF Core or the future Infrastructure / Web projects).
     /// </summary>
+    private static readonly IObjectProvider<IType> InfrastructureLayer =
+        Types().That().ResideInNamespaceMatching(@"^VehicleGo\.Infrastructure(\..+)?$").As("Infrastructure layer");
+
     private static string NamespacePattern(string root) =>
         $"^{root.Replace(".", @"\.", StringComparison.Ordinal)}(\\..+)?$";
 
@@ -34,10 +40,11 @@ public class LayerDependencyTests
         Types().That().Are(layer).Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching(NamespacePattern(forbiddenRoot));
 
     [Fact]
-    public void 兩個專案的型別都已載入()
+    public void 三個專案的型別都已載入()
     {
         Assert.NotEmpty(DomainLayer.GetObjects(Layers));
         Assert.NotEmpty(ApplicationLayer.GetObjects(Layers));
+        Assert.NotEmpty(InfrastructureLayer.GetObjects(Layers));
     }
 
     [Theory]
@@ -59,6 +66,21 @@ public class LayerDependencyTests
     [InlineData("Npgsql")]
     public void Application不依賴Infrastructure_Web_EFCore_ASPNET(string forbidden) =>
         MustNotDependOn(ApplicationLayer, forbidden).Check(Layers);
+
+    [Fact]
+    public void Infrastructure不依賴Web() =>
+        MustNotDependOn(InfrastructureLayer, "VehicleGo.Web").Check(Layers);
+
+    [Fact]
+    public void Infrastructure只參考Application和Domain專案()
+    {
+        var references = typeof(VehicleGo.Infrastructure.DependencyInjection).Assembly.GetReferencedAssemblies()
+            .Select(a => a.Name!)
+            .Where(n => n.StartsWith("VehicleGo.", StringComparison.Ordinal))
+            .Order();
+
+        Assert.Equal(["VehicleGo.Application", "VehicleGo.Domain"], references);
+    }
 
     [Fact]
     public void 規則能偵測到外部套件的依賴()
