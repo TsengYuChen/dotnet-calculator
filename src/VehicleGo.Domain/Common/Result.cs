@@ -3,7 +3,16 @@ using System.Diagnostics.CodeAnalysis;
 namespace VehicleGo.Domain.Common;
 
 /// <summary>A domain error: a fixed code plus, optionally, the (camelCase JSON) field it refers to.</summary>
-public sealed record Error(ErrorCode Code, string? Field = null);
+public sealed record Error(ErrorCode Code, string? Field = null)
+{
+    private static readonly IReadOnlyDictionary<string, object> NoExtensions = new Dictionary<string, object>();
+
+    /// <summary>
+    /// Extra values for the ProblemDetails extension members (design §1.4), keyed by their camelCase
+    /// JSON name, e.g. <c>trashedVehicleId</c>, <c>activeCount</c>, <c>trashCount</c>. Empty by default.
+    /// </summary>
+    public IReadOnlyDictionary<string, object> Extensions { get; init; } = NoExtensions;
+}
 
 /// <summary>Success, or failure with an <see cref="Common.Error"/>; used instead of throwing.</summary>
 public class Result

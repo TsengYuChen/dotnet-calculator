@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Application references only Domain (D-T1). The two packages below are abstractions only
+    (interfaces / extension points, no framework): handler registration and structured logging.
+    No EF Core and no ASP.NET Core packages (enforced by Architecture/LayerDependencyTests).
+  -->
+  <PropertyGroup>
+    <RootNamespace>VehicleGo.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../VehicleGo.Domain/VehicleGo.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
