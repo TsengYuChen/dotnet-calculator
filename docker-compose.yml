@@ -1,0 +1,57 @@
+# Local deployment (design §8). Run through ./deploy.sh (it exports GIT_SHA and POSTGRES_IMAGE);
+# the only exception is the reset: docker compose down -v. Values come from .env (see .env.example).
+name: vehiclego
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: ${POSTGRES_IMAGE:?請用 deploy.sh 執行}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?set GOOGLE_CLIENT_ID in .env}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET in .env}
+      MASTER_KEY: ${MASTER_KEY:?set MASTER_KEY in .env}
+      # GSS encryption off: the db speaks plain TCP on the compose network, and the runtime image has no
+      # libgssapi_krb5 (Npgsql would otherwise try it and print a "Cannot load library" error at every start).
+      ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "dotnet", "VehicleGo.Web.dll", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  db-data:

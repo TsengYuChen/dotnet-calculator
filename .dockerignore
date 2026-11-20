@@ -1,0 +1,17 @@
+# Keep secrets, git history and local build output out of the build context.
+.git
+.env
+**/.env
+.env.*
+!.env.example
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/TestResults/
+.vs/
+.idea/
+.vscode/
+*.md
+tests/
+docs/
